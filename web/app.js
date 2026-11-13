@@ -145,14 +145,14 @@ async function open() {
   if (!state.engine.numpy) throw new Error("Sound needs NumPy, which did not load here. MIDI files still work.");
   const options = listening();
   if (s.example) {
-    status("Playing it on the test synthesizer and listening… this is the slow part");
+    status("Playing it on the test synthesizer and listening… this takes about as long as the music lasts");
     return ask("open_midi_as_audio", { title, truth, colour: $("example-as").value, drums: true, options }, new Uint8Array(bytes));
   }
   status("Decoding the sound…");
   const got = await decode(bytes, Number($("limit").value));
   s.analysed = got.seconds;
   s.whole = got.whole;
-  status(`Listening to ${Math.round(got.seconds)} seconds… this is the slow part`);
+  status(`Listening to ${Math.round(got.seconds)} seconds… this takes about as long as the music lasts`);
   return ask("open_audio", { title, rate: RATE, options }, got.samples);
 }
 
@@ -337,6 +337,7 @@ function draw() {
   const y = (pitch) => axisH + (hi - pitch) * rowH;
 
   // the keys down the left edge
+  $("keys").hidden = $("notes").hidden = false;
   const k = sized($("keys"), KEYS_W, H);
   k.fillStyle = css("--screen");
   k.fillRect(0, 0, KEYS_W, H);

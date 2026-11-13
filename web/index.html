@@ -37,7 +37,7 @@
     </div>
 
     <p class="method">
-      <span id="listening">Listen to the first
+      <span id="listening" hidden>Listen to the first
         <select id="limit" aria-label="Length to analyse">
           <option value="30">30 seconds</option>
           <option value="60" selected>minute</option>
@@ -79,8 +79,8 @@
       <label><input type="checkbox" data-layer="drums" checked><i class="key key-drums"></i>Drums</label>
     </div>
     <div class="roll" id="roll" tabindex="0" aria-label="Piano roll. Click to move the playhead.">
-      <canvas id="keys" aria-hidden="true"></canvas>
-      <canvas id="notes"></canvas>
+      <canvas id="keys" aria-hidden="true" hidden></canvas>
+      <canvas id="notes" hidden></canvas>
       <div class="playhead" id="playhead" hidden></div>
       <p class="empty" id="empty">The notes will be drawn here: grey for what was in the source, colour for what the chip plays.</p>
     </div>

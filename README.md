@@ -65,7 +65,8 @@ it draws the notes it found against the voices the chip plays, lets you switch b
 the original and the chip version while it plays, scores every arranger, and offers the
 CLIo song, the transcription and the chip sound for download. Nothing is uploaded: the
 analysis is done by Python compiled to WebAssembly ([Pyodide](https://pyodide.org)) on
-your own machine, which also makes it several times slower than the command line.
+your own machine. That makes listening slow: transcribing a sound file takes about as
+long as the music lasts, where the command line needs a couple of seconds.
 
 To publish it from a fork: repository Settings, Pages, "Deploy from a branch", branch
 `main`, folder `/ (root)`. To run it locally:
