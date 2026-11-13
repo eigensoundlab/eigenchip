@@ -1,0 +1,169 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Daniel Sandner
+"""Tests for the front door the web page uses, and for the files of the page itself."""
+import importlib.util
+import json
+import os
+import re
+import sys
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "web"))
+
+try:
+    import numpy as np
+except ImportError:                                             # pragma: no cover
+    np = None
+
+import build_manifest                                           # noqa: E402
+from eigenchip import __version__                               # noqa: E402
+from eigenchip.app import Session, to_json                      # noqa: E402
+from eigenchip.readers import read                              # noqa: E402
+
+CORPUS = os.path.join(ROOT, "corpus")
+WEB = os.path.join(ROOT, "web")
+needs_numpy = unittest.skipIf(np is None, "NumPy is not installed")
+
+
+def corpus_bytes(name):
+    with open(os.path.join(CORPUS, name + ".mid"), "rb") as f:
+        return f.read()
+
+
+def clio_synth():
+    spec = importlib.util.spec_from_file_location("clio_synth", os.path.join(WEB, "vendor", "clio", "clio_synth.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class SessionTests(unittest.TestCase):
+    def test_midi_from_bytes_to_song_and_sound(self):
+        s = Session()
+        facts = s.open_midi(corpus_bytes("ode_to_joy"), "ode", {"melody": 0, "bass": 2})
+        self.assertEqual((facts["kind"], facts["notes"], facts["channels"], facts["version"]), ("midi", 148, 3, __version__))
+        self.assertEqual((facts["lowest"], facts["highest"]), ("c2", "g4"))
+        view = s.arrange("roles-arp")
+        json.loads(to_json(view))                               # everything crosses into JavaScript as JSON
+        self.assertEqual((view["judged_against"], view["offset"], view["played"]), ("file", 0.0, None))
+        self.assertEqual([v["role"] for v in view["voices"]], ["lead", "bass", "chords"])
+        self.assertEqual([r["arranger"] for r in view["scores"]], ["skyline", "roles", "roles-arp"])
+        chosen = view["scores"][2]
+        self.assertEqual((chosen["melody_recall"], chosen["bass_recall"]), (1.0, 1.0))
+        self.assertEqual(view["steps"], 256)
+        self.assertIn('"patterns"', view["song_json"])
+        self.assertEqual(view["song_name"], "ode_to_joy")
+        wav = s.chip_wav(clio_synth())
+        self.assertEqual((wav[:4], wav[8:12]), (b"RIFF", b"WAVE"))
+        seconds = (len(wav) - 44) / 2.0 / 22050
+        self.assertAlmostEqual(seconds, view["steps"] * view["step_seconds"], delta=2.0)
+        path = os.path.join(ROOT, "tests", "_roundtrip.mid")
+        try:
+            with open(path, "wb") as f:
+                f.write(s.midi_bytes())
+            self.assertEqual(len(read(path).notes), 148 + 192)
+        finally:
+            os.remove(path)
+
+    def test_fewer_voices_and_other_arrangers(self):
+        s = Session()
+        s.open_midi(corpus_bytes("crossing"), truth={"melody": 0, "bass": 2})
+        one = s.arrange("skyline", voices=1)
+        self.assertEqual(len(one["voices"]), 1)
+        three = s.arrange("roles")
+        self.assertGreater(three["scores"][1]["melody_recall"], three["scores"][0]["melody_recall"])    # the pad piece
+
+    def test_mistakes_are_plain_messages(self):
+        s = Session()
+        for call in (s.facts, s.arrange, s.midi_bytes, lambda: s.chip_wav(None)):
+            with self.assertRaises(ValueError):
+                call()
+        s.open_midi(corpus_bytes("waltz"))
+        with self.assertRaises(ValueError):
+            s.arrange("magic")
+        with self.assertRaises(ValueError):
+            s.open_midi(b"not a midi file")
+
+    @needs_numpy
+    def test_an_example_played_and_heard(self):
+        s = Session()
+        facts = s.open_midi_as_audio(corpus_bytes("waltz"), "waltz", "band", True, {"melody": 0, "bass": 2},
+                                     transcriber="nmf", tempo=None, meter=[4, 4])
+        self.assertEqual((facts["kind"], facts["tempo_verdict"], facts["meter"]), ("audio", "ok", [3, 4]))
+        self.assertGreaterEqual(facts["transcription"]["f1"], 0.9)
+        self.assertEqual(facts["transcription"]["true_notes"], 53)
+        view = s.arrange("roles-arp")
+        json.loads(to_json(view))
+        self.assertEqual(view["judged_against"], "played")
+        self.assertEqual(len(view["played"]), 53)
+        self.assertIsNotNone(view["scores"][0]["melody_recall"])
+        self.assertGreaterEqual(view["scores"][2]["pitch_recall"], 0.9)
+        wav = s.original_wav()
+        self.assertEqual(wav[:4], b"RIFF")
+        self.assertAlmostEqual((len(wav) - 44) / 2.0 / 22050, 10.4, delta=0.5)
+
+    @needs_numpy
+    def test_sound_of_unknown_origin(self):
+        from eigenchip.audio import synth
+        samples = synth.render(read(os.path.join(CORPUS, "triplets.mid")), "pluck")
+        s = Session()
+        facts = s.open_audio(samples, 22050, "clip", transcriber="peaks", tempo=100, meter=[4, 4])
+        self.assertEqual((facts["info"]["tempo_given"], facts["tempo"], facts["info"]["transcriber"]), (True, 100.0, "peaks"))
+        view = s.arrange("skyline")
+        self.assertEqual((view["judged_against"], view["truth"], view["kind"]), ("heard", {}, "audio"))
+        self.assertIsNone(view["scores"][0]["melody_recall"])
+        self.assertEqual(len(s.original_wav()), 44 + 2 * len(samples))
+        with self.assertRaises(ValueError):
+            s.open_audio(np.zeros(0, dtype=np.float32))
+
+    @needs_numpy
+    def test_midi_can_be_heard_on_the_test_synth(self):
+        s = Session()
+        s.open_midi(corpus_bytes("twinkle"))
+        self.assertEqual(s.original_wav("sine")[:4], b"RIFF")
+
+
+class PageTests(unittest.TestCase):
+    def test_the_file_list_is_current(self):
+        with open(os.path.join(WEB, "manifest.json"), encoding="utf-8") as f:
+            listed = json.load(f)
+        self.assertEqual(listed, build_manifest.build(), "run: python web/build_manifest.py")
+        for path in listed["package"] + list(listed["vendor"].values()):
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, path)), path)
+        self.assertIn("eigenchip/app.py", listed["package"])
+        self.assertNotIn("eigenchip/cli.py", listed["package"])
+
+    def test_the_page_is_complete(self):
+        with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
+            html = f.read()
+        for ref in re.findall(r'(?:src|href)="([^"#:]+)"', html):
+            self.assertTrue(os.path.isfile(os.path.join(WEB, ref)), ref)
+        with open(os.path.join(WEB, "app.js"), encoding="utf-8") as f:
+            js = f.read()
+        ids = set(re.findall(r'\bid="([^"]+)"', html))
+        for used in set(re.findall(r'\$\("([^"]+)"\)', js)):
+            self.assertIn(used, ids, "app.js uses #%s, which the page does not have" % used)
+        self.assertIn('type: "module"', js)                     # current Pyodide refuses classic workers
+        with open(os.path.join(WEB, "worker.js"), encoding="utf-8") as f:
+            worker = f.read()
+        self.assertRegex(worker, r'PYODIDE_VERSION = "\d+\.\d+\.\d+"')
+        for command in re.findall(r'ask\("([a-z_]+)"', js):
+            if command != "init":
+                self.assertIn('name == "%s"' % command, worker)
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, ".nojekyll")))    # or Pages hides __init__.py
+        with open(os.path.join(ROOT, "index.html"), encoding="utf-8") as f:
+            self.assertIn('url=web/', f.read())
+
+    def test_the_vendored_synth_plays_a_song(self):
+        synth = clio_synth()
+        samples = synth.render_song({"tempo": 120, "steps_per_beat": 4,
+                                     "instruments": {"a": {"wave": "square"}},
+                                     "patterns": {"p": {"a": "c4 . e4 . g4 . c5 ."}}, "sequence": ["p"]})
+        self.assertGreater(len(samples), 10000)
+        self.assertGreater(max(abs(x) for x in samples), 0.05)
+
+
+if __name__ == "__main__":
+    unittest.main()

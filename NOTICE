@@ -5,3 +5,15 @@ Licensed under the Apache License, Version 2.0 (see the LICENSE file).
 
 The pieces in corpus/ are arrangements of public-domain tunes, or were written
 for this project, and are covered by the same licence.
+
+Third-party material used by the web page in web/:
+
+- web/vendor/clio/clio_synth.py is the synthesizer of CLIo
+  (https://github.com/eryxgames/CLIo), tag v2.0.0. Copyright 2024-2026 Daniel
+  Sandner. Apache License, Version 2.0.
+- web/fonts/archivo.woff2 is the Archivo typeface. Copyright 2020 The Archivo
+  Project Authors (https://github.com/Omnibus-Type/Archivo). SIL Open Font
+  License 1.1; the full text is in web/fonts/LICENSE-Archivo.txt.
+- At run time the page loads Pyodide and NumPy from the jsDelivr CDN. They are
+  not part of this repository. Pyodide is under the Mozilla Public License 2.0,
+  NumPy under the BSD 3-Clause licence.

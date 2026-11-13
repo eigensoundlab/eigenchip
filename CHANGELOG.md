@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-11-13
+
+A workbench in the browser.
+
+- `web/`: a static page that runs the package unchanged in the browser (Python through
+  Pyodide, in a worker). Open a MIDI or sound file, or take a corpus piece as written or
+  played by the test synthesizer; see the notes that were found against the voices the
+  chip plays; switch between the original and the chip version while it plays; compare
+  the arrangers in a table and switch by choosing a row; download the CLIo song, the
+  transcription as MIDI and the chip sound. Files are not uploaded anywhere.
+- The chip sound comes from CLIo's own synthesizer, vendored at tag `v2.0.0`.
+- `eigenchip.app.Session`: the same steps as a small Python API returning plain data.
+- Serving: GitHub Pages from the repository root (`index.html` forwards to `web/`).
+
 ## 0.2.0 - 2026-11-13
 
 Audio in: sound files can be read, by transcribing them.

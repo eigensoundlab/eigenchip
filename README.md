@@ -10,7 +10,10 @@ deciding.
 Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814X)) ·
 [eigensoundlab](https://github.com/eigensoundlab)
 
-Status: early (0.2.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+**Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
+install, and your files stay on your computer.
+
+Status: early (0.3.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangement strategies and three transcription
 baselines; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
 and scores every stage on a small corpus. Python 3.8+. The MIDI path has no dependencies;
@@ -53,6 +56,27 @@ the estimate is sometimes twice or half the truth. `--transcriber` picks the met
 These are plain, readable baselines, not the state of the art. What comes out is one
 piano roll: no instruments, no drums, an assumed meter. Read
 [RESULTS-audio.md](RESULTS-audio.md) before trusting it.
+
+### In the browser
+
+`web/` is a static page that runs this package, unchanged, inside the browser. Open a MIDI
+or sound file (or take a corpus piece, as written or played by the test synthesizer), and
+it draws the notes it found against the voices the chip plays, lets you switch between
+the original and the chip version while it plays, scores every arranger, and offers the
+CLIo song, the transcription and the chip sound for download. Nothing is uploaded: the
+analysis is done by Python compiled to WebAssembly ([Pyodide](https://pyodide.org)) on
+your own machine, which also makes it several times slower than the command line.
+
+To publish it from a fork: repository Settings, Pages, "Deploy from a branch", branch
+`main`, folder `/ (root)`. To run it locally:
+
+```
+python -m http.server 8000        # in the repository root
+# then open http://localhost:8000/web/
+```
+
+The page fetches Pyodide and NumPy from the jsDelivr CDN, so it needs a connection the
+first time. If you add or remove a module of the package, run `python web/build_manifest.py`.
 
 ## How it is put together
 

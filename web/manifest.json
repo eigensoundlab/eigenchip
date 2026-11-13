@@ -1,0 +1,27 @@
+{
+ "package": [
+  "eigenchip/__init__.py",
+  "eigenchip/app.py",
+  "eigenchip/arrangers/__init__.py",
+  "eigenchip/arrangers/common.py",
+  "eigenchip/arrangers/roles.py",
+  "eigenchip/arrangers/roles_arp.py",
+  "eigenchip/arrangers/skyline.py",
+  "eigenchip/audio/__init__.py",
+  "eigenchip/audio/analysis.py",
+  "eigenchip/audio/decode.py",
+  "eigenchip/audio/evaluate.py",
+  "eigenchip/audio/synth.py",
+  "eigenchip/audio/transcribe.py",
+  "eigenchip/ir.py",
+  "eigenchip/metrics.py",
+  "eigenchip/midi.py",
+  "eigenchip/readers/__init__.py",
+  "eigenchip/readers/audio.py",
+  "eigenchip/writers/__init__.py",
+  "eigenchip/writers/clio.py"
+ ],
+ "vendor": {
+  "clio_synth.py": "web/vendor/clio/clio_synth.py"
+ }
+}
