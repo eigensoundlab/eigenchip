@@ -68,17 +68,43 @@ def harmonic_part(mag, fps, seconds=0.2, bins=17):
     return mag * mask
 
 
-def onset_strength(x, rate=RATE, n_fft=1024, hop=256):
-    """Spectral flux: how much new energy arrives in each short frame. Returns ``(flux, frames per second)``."""
+def flux_of(mag):
+    """Spectral flux of a magnitude spectrogram: how much new energy arrives in each frame (0..1)."""
     np = need_numpy()
-    mag = np.log1p(40.0 * stft(x, n_fft, hop, rate=rate))
+    mag = np.log1p(40.0 * mag)
     flux = np.maximum(0.0, mag[1:] - mag[:-1]).sum(axis=1)
     flux = np.concatenate(([0.0], flux))
-    span = max(3, int(0.4 * rate / hop)) | 1               # subtract the local average: keep the peaks
+    span = max(3, int(0.4 * 86.0)) | 1                     # subtract the local average: keep the peaks
     local = np.convolve(flux, np.ones(span) / span, mode="same")
     flux = np.maximum(0.0, flux - local)
     top = float(flux.max()) if len(flux) else 0.0
-    return (flux / top if top > 0 else flux), rate / float(hop)
+    return flux / top if top > 0 else flux
+
+
+def onset_strength(x, rate=RATE, n_fft=1024, hop=256):
+    """Onset strength of a signal, from a short-window spectrogram. Returns ``(flux, frames per second)``."""
+    return flux_of(stft(x, n_fft, hop, rate=rate)), rate / float(hop)
+
+
+def log_matrix(np, n_linear, bin_hz, centres, bins_per_semitone):
+    """``[log bins, linear bins]``: how to gather a linear spectrum into bins spaced evenly in pitch.
+
+    Low down, where linear bins are wider than the pitch bins, this interpolates;
+    high up, where many linear bins fall into one pitch bin, it pools them.
+    """
+    out = np.zeros((len(centres), n_linear), dtype=np.float32)
+    index = np.arange(n_linear)
+    half = 2.0 ** (1.0 / (12.0 * bins_per_semitone))
+    for k, fc in enumerate(centres):
+        pos = fc / bin_hz
+        width = max(1.0, (fc * half - fc / half) / bin_hz)          # in linear bins
+        lo, hi = max(0, int(pos - width) - 1), min(n_linear, int(pos + width) + 2)
+        if hi <= lo:
+            continue
+        # not normalised: where it pools, the energies of the lines in the band add up,
+        # so a single partial keeps its height however wide the band is
+        out[k, lo:hi] = np.maximum(0.0, 1.0 - np.abs(index[lo:hi] - pos) / width)
+    return out
 
 
 def peaks(np, curve, floor=0.08, spread=2):

@@ -48,7 +48,10 @@ a { color: inherit; text-underline-offset: 0.18em; }
 .source .chosen { flex-basis: 100%; margin: 0.15rem 0 0; color: var(--ink-2); }
 .source .chosen strong { color: var(--ink); font-weight: 650; }
 .method { margin: 0.9rem 0 0; font-size: 1.12rem; line-height: 2.1; }
-.status { margin: 0.5rem 0 0; min-height: 1.45em; color: var(--ink-2); font-stretch: 88%; }
+.progress { display: flex; align-items: center; gap: 0.8rem; margin-top: 0.5rem; min-height: 1.6em; }
+.progress progress { flex: none; width: 9rem; height: 0.55rem; accent-color: var(--ink); }
+.status { margin: 0; color: var(--ink-2); font-stretch: 88%; }
+#stop { margin-left: 0.5rem; }
 .status.bad { color: #a01919; font-weight: 600; }
 
 select, input[type="text"], button {

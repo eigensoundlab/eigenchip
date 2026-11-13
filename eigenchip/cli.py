@@ -40,12 +40,14 @@ def _read(args):
         num, _, den = args.meter.partition("/")
         meter = (int(num), int(den or 4))
     score = read(args.input, transcriber=getattr(args, "transcriber", None), tempo=getattr(args, "tempo", None),
-                 offset=getattr(args, "offset", None), meter=meter)
+                 offset=getattr(args, "offset", None), meter=meter,
+                 drums=False if getattr(args, "no_drums", False) else None, voices=getattr(args, "lines", None))
     if score.info.get("source") == "audio":
         info = score.info
-        print("transcribed with '%s': %d notes, tempo %.1f bpm (%s), first beat at %.2f s" % (
-            info.get("transcriber"), len(score.notes), score.tempo,
-            "given" if info.get("tempo_given") else "estimated", info.get("offset", 0.0)), file=sys.stderr)
+        print("transcribed with '%s': %d notes and %d drum hits, tempo %.1f bpm (%s), first beat at %.2f s" % (
+            info.get("transcriber"), sum(1 for n in score.notes if not n.drum), info.get("drum_hits", 0),
+            score.tempo, "given" if info.get("tempo_given") else "estimated", info.get("offset", 0.0)),
+            file=sys.stderr)
         if not info.get("tempo_given") and info.get("grid_agreement", 1.0) < 0.6:
             print("warning: the notes do not sit well on a grid at this tempo (agreement %.2f). "
                   "If it sounds wrong, give --tempo." % info["grid_agreement"], file=sys.stderr)
@@ -160,6 +162,9 @@ def main(argv=None):
         g.add_argument("--tempo", type=float, help="tempo in bpm, if you know it (otherwise estimated)")
         g.add_argument("--offset", type=float, help="seconds from the start of the file to the first beat")
         g.add_argument("--meter", help="time signature, e.g. 3/4 (default 4/4; it cannot be heard reliably)")
+        g.add_argument("--no-drums", action="store_true", help="do not look for kick, snare and hi-hat")
+        g.add_argument("--lines", type=int, metavar="N",
+                       help="sort the notes into up to N lines (default 5; 0 leaves them on one channel)")
 
     def common(p):
         p.add_argument("input")

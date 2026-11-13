@@ -24,7 +24,8 @@ def score_lead(st, mean_all):
     return (1.2 * st["monophony"]
             + 0.8 * min(1.0, st["distinct"] / 8.0)
             + 0.6 * st["movement"]
-            + 0.4 * min(1.0, st["density"] / 2.0)
+            + 1.0 * st.get("stepwise", 0.5)                     # a tune walks; a broken chord leaps
+            + 0.9 * min(1.0, st["density"] / 1.5)             # a tune has things to say; a pad holds still
             + 0.4 * max(-1.0, min(1.0, (st["mean_pitch"] - mean_all) / 12.0))
             + 0.3 * st["coverage"])
 
@@ -47,6 +48,8 @@ def _split(grid):
     lead_ch, bass_ch, stats = pick_roles(grid)
     if lead_ch is None:
         return None
+    if grid.info.get("lines_guessed"):
+        bass_ch = None      # guessed lines are good enough to find the tune; the bass is safer taken from the bottom
     notes = grid.pitched
     lead, used = line([n for n in notes if n.channel == lead_ch], top=True)
     rest = without(notes, used)

@@ -80,8 +80,11 @@ class Session:
         return self.facts()
 
     def open_audio(self, samples, rate=22050, title="", transcriber=None, tempo=None, offset=None,
-                   meter=(4, 4), steps_per_beat=4):
-        """Open sound: mono float samples. They are transcribed into notes."""
+                   meter=(4, 4), steps_per_beat=4, drums=True, voices=5, progress=None):
+        """Open sound: mono float samples. They are transcribed into notes.
+
+        ``progress(fraction, text)`` is called as the work goes on.
+        """
         from .audio import need_numpy
         from .audio.transcribe import DEFAULT as T_DEFAULT
         from .readers.audio import score_from_samples
@@ -92,7 +95,7 @@ class Session:
         self.samples = samples
         self.score = score_from_samples(samples, int(rate), transcriber or T_DEFAULT, tempo, offset,
                                         tuple(meter), int(steps_per_beat), {"seconds": len(samples) / float(rate)},
-                                        title)
+                                        title, bool(drums), int(voices or 0), progress)
         self.kind, self.truth, self.reference, self.played = "audio", {}, None, None
         self.song = self.grid = None
         return self.facts()
@@ -106,6 +109,8 @@ class Session:
         from .audio import evaluate, synth
         self.open_midi(data, title)
         played = self.score
+        if options.get("progress"):
+            options["progress"](0.01, "Playing it on the test synthesizer")
         samples = synth.render(played, colour, drums=bool(drums))
         if "tempo" not in options or options.get("tempo") is None:
             options.pop("tempo", None)
@@ -115,6 +120,15 @@ class Session:
         self.played, self.truth = played, dict(truth or {})
         heard = self.heard_seconds()
         scores = evaluate.note_scores(self.reference, heard)
+        beat = 60.0 / played.tempo
+        kinds = {35: "k", 36: "k", 37: "s", 38: "s", 39: "s", 40: "s"}
+        true_drums = [(n.start * beat, kinds.get(n.pitch, "h")) for n in played.notes if n.drum]
+        if true_drums and drums:
+            shift = float(self.score.info.get("offset", 0.0) or 0.0)
+            heard_drums = [(n.start * 60.0 / self.score.tempo + shift, kinds.get(n.pitch, "h"))
+                           for n in self.score.notes if n.drum]
+            d = evaluate.drum_scores(true_drums, heard_drums)
+            facts["drums"] = {k: (round(d[k], 3) if isinstance(d[k], float) else d[k]) for k in d}
         facts["transcription"] = {k: round(scores[k], 3) for k in ("precision", "recall", "f1", "f1_class")}
         facts["transcription"]["true_notes"] = scores["true_notes"]
         facts["tempo_true"] = round(played.tempo, 2)

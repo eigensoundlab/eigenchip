@@ -26,6 +26,9 @@ import clio_synth
 
 session = Session()
 
+def _progress(fraction, text):
+    js_progress(float(fraction), str(text))
+
 def _bytes(blob):
     return bytes(blob.to_py()) if blob is not None else None
 
@@ -36,10 +39,12 @@ def _call(name, payload, blob):
     if name == "open_audio":
         import numpy as np
         samples = np.frombuffer(_bytes(blob), dtype=np.float32)
-        return to_json(session.open_audio(samples, a.get("rate", 22050), a.get("title", ""), **a.get("options", {})))
+        return to_json(session.open_audio(samples, a.get("rate", 22050), a.get("title", ""),
+                                          progress=_progress, **a.get("options", {})))
     if name == "open_midi_as_audio":
         return to_json(session.open_midi_as_audio(_bytes(blob), a.get("title", ""), a.get("colour", "band"),
-                                                  a.get("drums", True), a.get("truth"), **a.get("options", {})))
+                                                  a.get("drums", True), a.get("truth"),
+                                                  progress=_progress, **a.get("options", {})))
     if name == "arrange":
         return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4)))
     if name == "chip":
@@ -68,6 +73,7 @@ async function init() {
     pyodide.FS.mkdirTree(path.slice(0, path.lastIndexOf("/")));
     pyodide.FS.writeFile(path, texts[i]);
   });
+  pyodide.globals.set("js_progress", (fraction, text) => postMessage({ type: "progress", fraction, text }));
   pyodide.runPython(BOOT);
   call = pyodide.globals.get("_call");
   const version = pyodide.runPython("eigenchip.__version__");

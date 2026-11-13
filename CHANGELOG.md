@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0 - 2026-11-13
+
+Deeper, with drums and lines - and a page that says what it is doing.
+
+- **A new picture of the sound.** The spectrogram is now spaced evenly in pitch, three
+  bins to the semitone from A0 up, with a second 0.74 s window for everything below
+  about 80 Hz. Notes down to 27.5 Hz can be reported, and sub-bass notes a semitone apart
+  can be told apart. The analysis is also several times smaller, so everything after it
+  is faster: the audio experiment runs in 70 s instead of 107, with one more piece.
+- **`pads`**, a fourth transcriber for sustained sound: the template activations read
+  slowly, without looking for attacks.
+- **Drums.** `find_drums` reports kick, snare and hi-hat from the shape of each attack;
+  the audio reader puts them on the drum track. Low notes that begin on a kick must last
+  longer to count.
+- **Lines.** `eigenchip.voices.separate` sorts a heap of notes into up to five lines by
+  pitch and continuity; the audio reader applies it. Arrangers take the tune from guessed
+  lines but still take the bass from the bottom.
+- **`roles` finds the tune over a broken-chord accompaniment**: stepwise motion and
+  activity now count. Melody kept by `roles` and `roles-arp` over the corpus rises from
+  0.75 to 0.88.
+- A tenth corpus piece, *Deep drone*: slow pads over a sub-bass down to 29 Hz.
+- Workbench: a progress bar with the current step, a **Stop** button (it ends the engine
+  and starts a fresh one), the `pads` choice, and drum hits in the summary.
+- Results: new tables for lines, drums, and sustained sound and deep tones.
+
+Changed numbers: `nmf` on the `band` colour is at F1 0.88 where 0.3.0 reported 0.92. The
+corpus has a piece more and the analysis is different, so the two are not the same
+measurement; on the nine old pieces the new analysis is about two points lower.
+
 ## 0.3.0 - 2026-11-13
 
 A workbench in the browser.

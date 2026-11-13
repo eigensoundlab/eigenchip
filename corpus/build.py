@@ -174,6 +174,14 @@ def groove():
                  {0: "lead", 1: "bass", 2: "pad", 9: "drums"})
 
 
+def deep_drone():
+    pads = ("[D3 A3 F4]:8 [D3 Bb3 F4]:8 [C3 G3 E4]:8 [D3 A3 F4]:8")
+    sub = "D1:8 Bb0:8 C1:8 D1:8"
+    high = "r:4 A4:4 r:2 D5:6 r:4 G4:4 r:2 A4:6"
+    notes = part(pads, 0, 89, 70) + part(sub, 1, 39, 100) + part(high, 2, 91, 55)
+    return Score(notes, 60, (4, 4), "Deep drone (pads and sub-bass)", {0: "pad", 1: "sub", 2: "glass"})
+
+
 PIECES = [
     ("ode_to_joy", ode_to_joy, {"melody": 0, "bass": 2},
      "Beethoven's theme (public domain) with block chords, bass and drums.",
@@ -202,6 +210,9 @@ PIECES = [
     ("groove", groove, {"melody": 0, "bass": 1},
      "Written for this corpus.",
      "Syncopated sixteenths, a busy bass and a drum kit."),
+    ("deep_drone", deep_drone, {"bass": 1},
+     "Written for this corpus.",
+     "Slow pads over a sub-bass that goes down to 29 Hz. No tune, no attacks to count: a soundscape in small."),
 ]
 
 

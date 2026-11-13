@@ -24,7 +24,8 @@ sys.path.insert(0, ROOT)
 from eigenchip import __version__, metrics                      # noqa: E402
 from eigenchip.arrangers import arrange                         # noqa: E402
 from eigenchip.audio import analysis, decode, evaluate, synth   # noqa: E402
-from eigenchip.audio.transcribe import TRANSCRIBERS, Spectrum, transcribe   # noqa: E402
+from eigenchip.audio.transcribe import TRANSCRIBERS, Spectrum, find_drums, transcribe   # noqa: E402
+from eigenchip.voices import consistency, flatten, separate    # noqa: E402
 from eigenchip.ir import quantize                               # noqa: E402
 from eigenchip.readers import read                              # noqa: E402
 from eigenchip.readers.audio import score_from_samples          # noqa: E402
@@ -72,12 +73,36 @@ def run(log=None):
     corpus = os.path.join(ROOT, "corpus")
     with open(os.path.join(corpus, "manifest.json"), encoding="utf-8") as f:
         manifest = json.load(f)
-    out = {"manifest": manifest, "notes": [], "drums": [], "tempo": [], "chain": [], "codecs": []}
+    out = {"manifest": manifest, "notes": [], "drums": [], "tempo": [], "chain": [], "codecs": [],
+           "kit": [], "voices": [], "deep": []}
+    kinds = {35: "k", 36: "k", 37: "s", 38: "s", 39: "s", 40: "s"}
     ffmpeg = decode.ffmpeg_path()
     for entry in manifest:
         score = read(os.path.join(corpus, entry["file"]))
         truth = synth.truth(score)
         has_drums = any(n.drum for n in score.notes)
+        # lines: take the channels away from the MIDI file and see whether they can be found again
+        flat = flatten(score)
+        apart = separate(flat)
+        grid = quantize(score)
+        row = {"piece": entry["title"], "consistency": consistency(score, apart)}
+        for label, version in (("true", score), ("none", flat), ("found", apart)):
+            res = metrics.evaluate(grid, arrange(quantize(version), "roles"), None, entry.get("truth"))
+            row["melody_" + label] = res["melody_recall"]
+        out["voices"].append(row)
+        if entry["file"].startswith("deep_drone"):
+            for colour in ("pad", "sine", "organ"):
+                samples = synth.render(score, colour)
+                for label, spec in (("deep window", Spectrum(samples)), ("without it", Spectrum(samples, deep=False))):
+                    for name in ("nmf", "pads"):
+                        notes = [n[:3] for n in transcribe(spec, name)]
+                        res = evaluate.note_scores(truth, notes, tolerance=0.25)
+                        low_true = {p for _a, _b, p in truth if p < 36}
+                        low_found = {p for _a, _b, p in notes if p < 36}
+                        res.update(colour=colour, method=name, window=label,
+                                   low="%d of %d, %d wrong" % (len(low_true & low_found), len(low_true),
+                                                               len(low_found - low_true)))
+                        out["deep"].append(res)
         for colour in COLOURS:
             samples = synth.render(score, colour, drums=False)
             spec = Spectrum(samples)
@@ -95,19 +120,31 @@ def run(log=None):
                 grid = quantize(score)
                 ratio = {"double": 0.5, "half": 2.0}.get(out["tempo"][-1]["verdict"], 1.0)
                 for name in TRANSCRIBERS:
-                    heard = score_from_samples(samples, transcriber=name, meter=score.meter,
-                                               tempo=bpm * ratio if ratio != 1.0 else None)
-                    heard_grid = quantize(heard)
-                    for arranger in ("skyline", "roles-arp"):
-                        res = metrics.evaluate(grid, arrange(heard_grid, arranger), None, entry.get("truth"))
-                        res.update(piece=entry["file"], source=name, arranger=arranger)
-                        out["chain"].append(res)
+                    for lines in (0, 5):
+                        heard = score_from_samples(samples, transcriber=name, meter=score.meter, voices=lines,
+                                                   tempo=bpm * ratio if ratio != 1.0 else None)
+                        heard_grid = quantize(heard)
+                        for arranger in ("skyline", "roles-arp"):
+                            if lines and arranger == "skyline":
+                                continue                        # skyline does not look at channels
+                            res = metrics.evaluate(grid, arrange(heard_grid, arranger), None, entry.get("truth"))
+                            res.update(piece=entry["file"], source=name + (", lines found" if lines else ""),
+                                       arranger=arranger)
+                            out["chain"].append(res)
                 for arranger in ("skyline", "roles-arp"):
                     res = metrics.evaluate(grid, arrange(grid, arranger), None, entry.get("truth"))
                     res.update(piece=entry["file"], source="midi", arranger=arranger)
                     out["chain"].append(res)
                 if has_drums:
+                    spb = 60.0 / score.tempo
+                    true_hits = [(n.start * spb, kinds.get(n.pitch, "h")) for n in score.notes if n.drum]
+                    for kit_colour in ("band", "square", "pluck"):
+                        heard = find_drums(Spectrum(synth.render(score, kit_colour, drums=True)))
+                        res = evaluate.drum_scores(true_hits, heard)
+                        res.update(piece=entry["title"], colour=kit_colour)
+                        out["kit"].append(res)
                     with_drums = Spectrum(synth.render(score, "band", drums=True))
+                    find_drums(with_drums)                      # tells the note cutter where the kicks are
                     for name in TRANSCRIBERS:
                         for label, sp in (("without drums", spec), ("with drums", with_drums)):
                             res = evaluate.note_scores(truth, [n[:3] for n in transcribe(sp, name)])
@@ -158,7 +195,8 @@ def report(out):
                                                cell(mean(rows, "melody"))))
         lines.append("")
     lines += ["`band` gives every channel its own tone colour. `mono` follows one line only, so its",
-              "recall is low by design wherever more than one note sounds.", "",
+              "recall is low by design wherever more than one note sounds; `pads` keeps only what lasts,",
+              "so it misses short notes by design.", "",
               "## Piece by piece (tone colour: band, F1)", "",
               "| piece | " + " | ".join(TRANSCRIBERS) + " |", "| --- |" + " ---: |" * len(TRANSCRIBERS)]
     for entry in out["manifest"]:
@@ -167,9 +205,38 @@ def report(out):
             hit = [r for r in notes if r["piece"] == entry["file"] and r["colour"] == "band" and r["method"] == name]
             row.append(cell(hit[0]["f1"]) if hit else "-")
         lines.append("| %s | %s |" % (entry["title"], " | ".join(row)))
+    lines += ["", "## Finding lines", "",
+              "The channels of each MIDI file are thrown away and looked for again (`eigenchip/voices.py`).",
+              "`together` is the share of notes that follow each other in a true line and are still in one",
+              "line afterwards. The other columns are the melody found by the `roles` arranger: with the",
+              "true channels, with none, and with the lines that were found.", "",
+              "| piece | together | melody, true channels | melody, no channels | melody, lines found |",
+              "| --- | ---: | ---: | ---: | ---: |"]
+    for r in out["voices"]:
+        lines.append("| %s | %s | %s | %s | %s |" % (r["piece"], cell(r["consistency"]), cell(r["melody_true"]),
+                                                     cell(r["melody_none"]), cell(r["melody_found"])))
+    lines.append("| **average** | %s | %s | %s | %s |" % tuple(
+        cell(mean(out["voices"], k)) for k in ("consistency", "melody_true", "melody_none", "melody_found")))
+    lines += ["", "## Hearing drums", "",
+              "Kick, snare and hi-hat found by `find_drums`, against the hits that were played",
+              "(right kind, within 50 ms). The pitched parts play along in the tone colour named.", "",
+              "| piece | tone colour | precision | recall | F1 |", "| --- | --- | ---: | ---: | ---: |"]
+    for r in out["kit"]:
+        lines.append("| %s | %s | %s | %s | %s |" % (r["piece"], r["colour"], cell(r["precision"]),
+                                                     cell(r["recall"]), cell(r["f1"])))
+    lines += ["", "## Sustained sound and deep tones", "",
+              "`Deep drone` only: slow pads over a sub-bass down to 29 Hz. Onsets are soft, so a note",
+              "counts when it starts within 250 ms. `low notes` are the three sub-bass pitches: how many",
+              "were found, and how many wrong ones were reported beside them. The deep window is the",
+              "second, 0.74 s analysis used below about 80 Hz.", "",
+              "| tone colour | transcriber | analysis | F1 | frame F1 | low notes |",
+              "| --- | --- | --- | ---: | ---: | --- |"]
+    for r in out["deep"]:
+        lines.append("| %s | %s | %s | %s | %s | %s |" % (r["colour"], r["method"], r["window"], cell(r["f1"]),
+                                                          cell(r["frame_f1"]), r["low"]))
     lines += ["", "## What drums do", "",
-              "The two pieces with a drum track, with and without it. Nothing here transcribes drums;",
-              "the question is how much they disturb the pitched notes.", "",
+              "The two pieces with a drum track, with and without it: how much do the drums disturb",
+              "the pitched notes?", "",
               "| piece | transcriber | setting | precision | recall | F1 |", "| --- | --- | --- | ---: | ---: | ---: |"]
     for r in out["drums"]:
         lines.append("| %s | %s | %s | %s | %s | %s |" % (r["piece"], r["method"], r["setting"],
@@ -194,11 +261,15 @@ def report(out):
               "## The whole chain: audio in, chip arrangement out", "",
               "The arrangement made from the audio (tone colour `band`, no drums, tempo estimated;",
               "a doubled or halved tempo is put right first) judged against the notes of the MIDI file,",
-              "next to the same arranger working from the MIDI file itself. Columns as in `RESULTS.md`.", ""]
+              "next to the same arranger working from the MIDI file itself. Columns as in `RESULTS.md`.",
+              "`lines found` means the transcription was sorted into lines before arranging.", ""]
     for arranger in ("skyline", "roles-arp"):
         lines += ["### %s" % arranger, "",
                   "| source | " + " | ".join(E2E_HEAD[k] for k in E2E) + " |", "| --- |" + " ---: |" * len(E2E)]
-        for source in ["midi"] + list(TRANSCRIBERS):
+        sources = ["midi"] + list(TRANSCRIBERS)
+        if arranger != "skyline":
+            sources += [t + ", lines found" for t in TRANSCRIBERS]
+        for source in sources:
             rows = [r for r in out["chain"] if r["arranger"] == arranger and r["source"] == source]
             lines.append("| %s | %s |" % ("MIDI file" if source == "midi" else "audio, " + source,
                                           " | ".join(cell(mean(rows, k)) for k in E2E)))

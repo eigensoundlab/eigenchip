@@ -101,5 +101,16 @@
     },
     "source": "Written for this corpus.",
     "stresses": "Syncopated sixteenths, a busy bass and a drum kit."
+  },
+  {
+    "file": "deep_drone.mid",
+    "title": "Deep drone (pads and sub-bass)",
+    "meter": "4/4",
+    "tempo": 60.0,
+    "truth": {
+      "bass": 1
+    },
+    "source": "Written for this corpus.",
+    "stresses": "Slow pads over a sub-bass that goes down to 29 Hz. No tune, no attacks to count: a soundscape in small."
   }
 ]

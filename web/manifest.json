@@ -18,6 +18,7 @@
   "eigenchip/midi.py",
   "eigenchip/readers/__init__.py",
   "eigenchip/readers/audio.py",
+  "eigenchip/voices.py",
   "eigenchip/writers/__init__.py",
   "eigenchip/writers/clio.py"
  ],

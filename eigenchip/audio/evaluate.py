@@ -60,6 +60,27 @@ def note_scores(ref, est, tolerance=0.05, frame=0.02):
             "notes": len(est), "true_notes": len(ref)}
 
 
+def drum_scores(ref, est, tolerance=0.05):
+    """Compare drum hits ``[(seconds, "k" | "s" | "h"), ...]``. Precision, recall, F1 over all kinds."""
+    hits = n_ref = n_est = 0
+    for kind in "ksh":
+        want = sorted(t for t, k in ref if k == kind)
+        have = sorted(t for t, k in est if k == kind)
+        used = [False] * len(have)
+        for t in want:
+            best, best_d = None, tolerance
+            for i, x in enumerate(have):
+                if not used[i] and abs(x - t) <= best_d:
+                    best, best_d = i, abs(x - t)
+            if best is not None:
+                used[best] = True
+                hits += 1
+        n_ref += len(want)
+        n_est += len(have)
+    p, r, f = _prf(hits, n_ref, n_est)
+    return {"precision": p, "recall": r, "f1": f, "hits": n_est, "true_hits": n_ref}
+
+
 def tempo_verdict(estimated, true, tolerance=0.02):
     """'ok', 'double', 'half', 'triple', 'third' or 'wrong'."""
     for label, ratio in (("ok", 1.0), ("double", 2.0), ("half", 0.5), ("triple", 3.0), ("third", 1 / 3.0),

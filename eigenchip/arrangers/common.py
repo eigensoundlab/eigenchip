@@ -116,6 +116,12 @@ def channel_stats(grid):
         mono = sum(1 for c in steps.values() if c == 1) / float(len(steps) or 1)
         pitches = [n.pitch for n in notes]
         moves = sum(1 for a, b in zip(pitches, pitches[1:]) if a != b) / float(max(1, len(pitches) - 1))
+        tops = {}
+        for n in notes:
+            tops[n.start] = max(tops.get(n.start, 0), n.pitch)
+        tune = [tops[t] for t in sorted(tops)]
+        jumps = [abs(a - b) for a, b in zip(tune, tune[1:]) if a != b]
+        stepwise = sum(1 for j in jumps if j <= 2) / float(len(jumps)) if jumps else 0.5
         stats[ch] = {
             "notes": len(notes),
             "mean_pitch": sum(pitches) / float(len(pitches)),
@@ -124,6 +130,7 @@ def channel_stats(grid):
             "density": len(onsets) / (length / float(grid.steps_per_beat)),    # onsets per beat
             "distinct": len(set(pitches)),
             "movement": moves,                                  # how often consecutive notes differ
+            "stepwise": stepwise,                               # share of its moves that are steps, not leaps
             "velocity": sum(n.vel for n in notes) / float(len(notes)),
         }
     return stats

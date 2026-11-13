@@ -13,9 +13,9 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.3.0). It reads MIDI files and, by transcribing them, sound files (WAV,
-Ogg, MP3, FLAC, M4A...); has three arrangement strategies and three transcription
-baselines; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
+Status: early (0.4.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Ogg, MP3, FLAC, M4A...); has three arrangement strategies and four transcription
+baselines, finds drums and sorts transcribed notes into lines; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
 and scores every stage on a small corpus. Python 3.8+. The MIDI path has no dependencies;
 the audio path needs NumPy, and ffmpeg for anything but WAV.
 
@@ -52,10 +52,23 @@ the estimate is sometimes twice or half the truth. `--transcriber` picks the met
 | `mono` | Follow the single most prominent pitch along a smooth path. For an unaccompanied tune. |
 | `peaks` | Find the strongest pitch in each moment, remove its overtones, look again (harmonic summation with cancellation). |
 | `nmf` | Explain each moment as a mix of fixed harmonic templates, several tone colours per pitch (non-negative matrix factorisation). The default. |
+| `pads` | The same templates read slowly: only what lasts counts, and attacks are not looked for. For drones, pads and slow swells. |
 
-These are plain, readable baselines, not the state of the art. What comes out is one
-piano roll: no instruments, no drums, an assumed meter. Read
-[RESULTS-audio.md](RESULTS-audio.md) before trusting it.
+Around the transcriber:
+
+- **Deep tones.** Notes are reported from A0 (27.5 Hz) up. Below about 80 Hz a second,
+  much longer analysis window (0.74 s) is used, because neighbouring notes that low
+  cannot be told apart in less.
+- **Drums.** Kick, snare and hi-hat are looked for by the shape of each attack and put on
+  the drum track (`--no-drums` turns this off). A rule of thumb for simple kits, not a
+  drum transcriber.
+- **Lines.** A transcription is one heap of notes. They are sorted into up to five lines
+  by pitch and continuity, so that arrangers have something like channels again
+  (`--lines 0` leaves them on one channel).
+
+These are plain, readable baselines, not the state of the art. Instruments are not
+recognised, the meter is assumed, pitch glides and noise sweeps are not followed at all.
+Read [RESULTS-audio.md](RESULTS-audio.md) before trusting it.
 
 ### In the browser
 
@@ -110,9 +123,10 @@ Scores for every arranger on every piece are in **[RESULTS.md](RESULTS.md)**, re
 by `python experiments/run.py`. Dated notes are in
 [docs/research-log.md](docs/research-log.md). In brief:
 
-- Neither way of finding the melody is safe. `skyline` loses it when anything sits above
-  the tune; `roles` loses it to a busy broken-chord accompaniment. No strategy here gets
-  both cases right, which makes that the first problem to solve.
+- Finding the melody by pitch alone is not safe: `skyline` loses it when anything sits
+  above the tune. `roles` used to lose it to a busy broken-chord accompaniment; since it
+  learnt that a tune moves by step and a broken chord by leap, it gets both cases right.
+  A round, where every part is the tune in turn, still defeats it.
 - Turning the accompaniment into arpeggiated chords keeps more of the harmony than a
   third melodic line, at some cost to the accompaniment's rhythm.
 - Three-note chords are a hard ceiling for dense harmony.
@@ -123,13 +137,21 @@ same corpus:
 - Template matching (`nmf`) finds about nine notes in ten and invents about one in ten;
   the simpler `peaks` is clearly behind, mostly on chords.
 - Compressing the audio to MP3 or Ogg costs almost nothing.
-- Drums cost a lot: they are heard as notes. On the two pieces with a drum track,
-  precision falls from 0.71 to 0.45 and from 0.74 to 0.62.
-- Tempo is right on eight pieces of nine, and doubled on the ninth.
-- The notes survive better than the roles do. A transcription has no channels, so the
-  arrangers can no longer tell the tune from the accompaniment by where it came from:
-  the lead voice keeps about two thirds of the melody from audio against three quarters
-  from MIDI, although the transcription itself contains nearly all of it.
+- Drums still cost precision, though less than before: on the two pieces with a drum
+  track it falls from 0.70 to 0.58 and from 0.73 to 0.61. The drum hits themselves are
+  found with almost no false alarms, but a fifth to a third of them are missed.
+- Sub-bass is only readable with the long window: on the drone piece all three notes
+  between 29 and 37 Hz are found with it and none invented; without it, four or five
+  wrong neighbours appear beside them.
+- For sustained sound the slow reading (`pads`) is clearly better than `nmf`, which
+  shreds a swelling pad into fragments; on ordinary music it is useless by design.
+- Tempo is right on eight pieces of ten, doubled on one, and wrong on the drone piece,
+  which has no pulse to find.
+- Sorting notes into lines works on clean notes and barely matters on transcribed ones.
+  With the channels of the MIDI files thrown away, the lead voice keeps 0.77 of the
+  melody; with lines found again, 0.85; with the true channels, 0.88. From audio the
+  same step changes almost nothing (0.73 against 0.72): the transcriber's stray notes
+  break the lines up.
 
 ## What the scores mean, and what they do not
 
@@ -173,9 +195,13 @@ experiment.
 - **Structure**: finding repeated passages that are not aligned to four-bar blocks.
 - **Timbre**: choosing waveform and envelope from the source instrument.
 - **Rhythm**: grids for triplets and swing; a measure taken against the unquantised source.
-- **Voices from a piano roll**: splitting a transcription into lines (by pitch
-  proximity and continuity), so that arrangers have something like channels again.
-- **Drums**: separating them before transcription, and transcribing them as drums.
+- **Lines that survive a noisy transcription**: the separator works on clean notes and
+  not yet on heard ones; cleaning up fragments and ghosts first is the likely way in.
+- **Soundscapes**: pitch glides (risers), noise sweeps and slowly changing timbre have
+  no notes to transcribe. They need their own description - a contour, a noise level -
+  and a target format that can play one.
+- **Drums**: missed hits when a hat and a snare coincide; toms and cymbals; removing
+  the drums from the sound before the pitched analysis instead of working around them.
 - **Harder audio**: recordings of real instruments, reverberation, detuning; a trained
   transcription model as an optional reader, measured on the same table as the baselines.
 - **More readers**: tracker modules.

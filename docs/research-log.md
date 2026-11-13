@@ -3,6 +3,67 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-13 - deep tones, drums, lines, and a melody rule
+
+**Set-up.** The linear spectrogram was replaced by one spaced in pitch (three bins per
+semitone, A0 to 5.5 kHz), with a second, 0.74 s window blended in below 55-80 Hz. A slow
+reading of the same activations (`pads`), a rule-of-thumb drum detector, and a greedy
+line separator were added. A tenth piece, *Deep drone*, tests sustained sound and
+sub-bass. Numbers in `RESULTS-audio.md` and `RESULTS.md`.
+
+**What the tables show.**
+
+- *Low notes need time.* At 30-40 Hz a semitone is about 2 Hz wide; a 186 ms window
+  cannot separate that, whatever is done afterwards. With the long window the three
+  sub-bass notes of the drone piece are found and nothing is invented; without it four or
+  five wrong neighbours appear. The long window is kept below 80 Hz only: when it also
+  covered the bass register, fast bass lines smeared into their neighbours.
+- *Pooling into pitch bins changes what a template must look like.* Low partials are
+  wide in this picture and high ones narrow. Templates have to follow that (bumps as wide
+  as a spectral peak really is there), but sums of evidence must not: a wide bump gathers
+  more, and `peaks` and `mono` drifted an octave down until every bump was given the same
+  area. Getting this wrong cost more accuracy than anything else in this round.
+- *A phantom bass has no fundamental.* With the range extended downwards, chords were
+  increasingly "explained" by one very low note whose overtones are the chord. Scaling
+  each activation by the energy at its own fundamental removes most of these.
+- *`pads` is a different reading, not a better one.* On the swelling pad it scores 0.90
+  where `nmf` scores 0.24, because `nmf` cuts a slow attack into pieces; on every ordinary
+  piece it scores near zero, because it ignores anything shorter than 0.4 s.
+- *Drums are easy to find and hard to remove.* Flat, quickly fading bursts are drums with
+  almost no false alarms on three tone colours, but 18-33% of hits are missed (a hi-hat
+  under a snare, for one, is reported as the snare alone). A plucked attack is itself
+  a short burst of noise; only a strict flatness threshold keeps plucked notes from
+  being heard as snares. Knowing where the kicks are lets the note cutter demand longer
+  low notes there, which recovers part of the precision drums cost (0.45 to 0.58 on the
+  worst piece).
+- *The melody problem of the first entry is solved for clean notes.* A tune moves mostly
+  by step, a broken chord only by leap. With that, and with activity weighted up so that
+  a pad's top note is not mistaken for a tune, `roles` passes both `crossing` and
+  `twinkle`. The round still fails, as it should: it has no single melody.
+- *Lines: yes on notes, not yet on sound.* With true channels the lead keeps 0.88 of the
+  melody, with none 0.77, with lines found again 0.85. From audio, finding lines changes
+  0.73 to 0.72. The separator is fed fragments and ghosts, and a greedy rule cannot
+  recover from them. This was expected to be the big win of the round and is not.
+- *The new analysis is about two points less accurate on the old pieces* (`nmf`, `band`)
+  and several times cheaper. That trade was taken for the browser.
+
+**What the tables cannot show.**
+
+- Soundscapes. *Deep drone* is a soundscape only in the sense of being slow and low. It
+  has no pitch glides, no noise sweeps, no evolving timbre - the things that made the
+  owner's first real test piece hard. Nothing here follows a riser.
+- Real drums. The detector was fitted to three synthetic sounds.
+- Whether the lines are musically right; only whether successive notes stay together.
+
+**Next.**
+
+1. Clean the transcription before separating lines (merge fragments, drop ghosts), then
+   measure lines from audio again.
+2. A description for what is not notes: pitch contours for glides, a noise level over
+   time. This needs a target that can play it; CLIo songs cannot slide.
+3. Real audio with known notes (BabySlakh, MusicNet), as planned.
+4. Hi-hat under snare; remove drums from the sound instead of working around them.
+
 ## 2026-11-13 - audio: three transcription baselines
 
 **Set-up.** The corpus played by a small additive synthesizer in four tone colours

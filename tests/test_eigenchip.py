@@ -129,7 +129,7 @@ class ArrangerTests(unittest.TestCase):
         self.assertEqual(score("crossing", "skyline", cross)["melody_recall"], 0.0)     # fooled by the pad
         self.assertEqual(score("crossing", "roles", cross)["melody_recall"], 1.0)
         self.assertEqual(score("twinkle", "skyline", {"melody": 0})["melody_recall"], 1.0)
-        self.assertEqual(score("twinkle", "roles", {"melody": 0})["melody_recall"], 0.0)  # fooled by the Alberti bass
+        self.assertEqual(score("twinkle", "roles", {"melody": 0})["melody_recall"], 1.0)  # a tune walks, a broken chord leaps
         dense = {"melody": 0, "bass": 2}
         self.assertGreater(score("dense_chords", "roles-arp", dense)["pitch_recall"],
                            score("dense_chords", "roles", dense)["pitch_recall"])

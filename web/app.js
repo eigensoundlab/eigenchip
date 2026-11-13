@@ -28,20 +28,56 @@ const state = {
 const players = { original: new Audio(), chip: new Audio() };
 
 // ---------------------------------------------------------------------- engine
-const worker = new Worker("worker.js" + location.search, { type: "module" });
+let worker = null;
 const waiting = new Map();
 let sequence = 0;
-worker.onmessage = (event) => {
-  const m = event.data;
-  if (m.type === "status") return status(m.text + "…");
-  if (m.type === "ready") { state.engine = m; return; }
-  const w = waiting.get(m.id);
-  if (!w) return;
-  waiting.delete(m.id);
-  if (m.ok) w.resolve(m.json !== undefined ? JSON.parse(m.json) : m.bytes !== undefined ? m.bytes : true);
-  else w.reject(new Error(m.error));
-};
-worker.onerror = (event) => status("The engine could not start: " + (event.message || "the worker failed to load") + ".", true);
+function startEngine() {
+  worker = new Worker("worker.js" + location.search, { type: "module" });
+  worker.onmessage = (event) => {
+    const m = event.data;
+    if (m.type === "status") return status(m.text + "…");
+    if (m.type === "progress") { progress(m.fraction); return status(m.text + "…"); }
+    if (m.type === "ready") { state.engine = m; return; }
+    const w = waiting.get(m.id);
+    if (!w) return;
+    waiting.delete(m.id);
+    if (m.ok) w.resolve(m.json !== undefined ? JSON.parse(m.json) : m.bytes !== undefined ? m.bytes : true);
+    else w.reject(new Error(m.error));
+  };
+  worker.onerror = (event) => status("The engine could not start: " + (event.message || "the worker failed to load") + ".", true);
+  return ask("init", {});
+}
+
+// Python cannot be interrupted from outside, so stopping means ending the worker and starting a fresh one.
+async function stopEngine() {
+  if (!state.busy) return;
+  state.stopped = true;
+  worker.terminate();
+  for (const w of waiting.values()) w.reject(new Error("Stopped."));
+  waiting.clear();
+  state.engine = null;
+  state.opened = null;
+  $("stop").hidden = true;
+  progress(null);
+  status("Stopped. Getting the engine ready again…");
+  try {
+    await startEngine();
+    status("Stopped. Ready again.");
+  } catch (err) {
+    status("The engine could not restart: " + err.message, true);
+  }
+  progress(undefined);
+  sourceChanged();
+}
+
+// fraction 0..1 fills the bar; null shows it busy without a figure; undefined hides it
+function progress(fraction) {
+  const bar = $("bar");
+  bar.hidden = fraction === undefined;
+  if (fraction === null || fraction === undefined) bar.removeAttribute("value");
+  else bar.value = Math.max(0, Math.min(1, fraction));
+}
+
 function ask(cmd, payload, blob) {
   return new Promise((resolve, reject) => {
     const id = ++sequence;
@@ -145,21 +181,24 @@ async function open() {
   if (!state.engine.numpy) throw new Error("Sound needs NumPy, which did not load here. MIDI files still work.");
   const options = listening();
   if (s.example) {
-    status("Playing it on the test synthesizer and listening… this takes about as long as the music lasts");
+    status("Playing it on the test synthesizer and listening…");
     return ask("open_midi_as_audio", { title, truth, colour: $("example-as").value, drums: true, options }, new Uint8Array(bytes));
   }
   status("Decoding the sound…");
   const got = await decode(bytes, Number($("limit").value));
   s.analysed = got.seconds;
   s.whole = got.whole;
-  status(`Listening to ${Math.round(got.seconds)} seconds… this takes about as long as the music lasts`);
+  status(`Listening to ${Math.round(got.seconds)} seconds…`);
   return ask("open_audio", { title, rate: RATE, options }, got.samples);
 }
 
 async function convert(arrangeOnly) {
   if (state.busy || !state.source || !state.engine) return;
   state.busy = true;
+  state.stopped = false;
   $("go").disabled = true;
+  $("stop").hidden = false;
+  progress(null);
   stop();
   const started = performance.now();
   try {
@@ -169,6 +208,7 @@ async function convert(arrangeOnly) {
       state.facts = await open();
       state.opened = key;
     }
+    progress(null);
     status("Arranging…");
     state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value) });
     show();
@@ -176,9 +216,11 @@ async function convert(arrangeOnly) {
     await sound();
     status(`Done in ${((performance.now() - started) / 1000).toFixed(1)} s. Play it, or choose another arranger in the table.`);
   } catch (err) {
-    status(err.message, true);
+    if (!state.stopped) status(err.message, true);
   } finally {
     state.busy = false;
+    $("stop").hidden = true;
+    if (!state.stopped) progress(undefined);
     sourceChanged();
   }
 }
@@ -239,9 +281,11 @@ function show() {
     const info = f.info || {};
     parts.push(`Heard ${b(f.notes)} notes between ${f.lowest.toUpperCase()} and ${f.highest.toUpperCase()}, at ${b(v.tempo)} bpm ` +
       `(${info.tempo_given ? "as given" : "estimated"}), with the first beat at ${Number(info.offset || 0).toFixed(2)} s.`);
+    if (f.drum_hits) parts.push(`It also heard ${b(f.drum_hits)} drum hits.`);
     if (f.transcription) {
       const t = f.transcription;
       parts.push(`Of the ${b(t.true_notes)} notes really played it found ${b(pct(t.recall))}, and ${b(pct(t.precision))} of what it wrote down is right.`);
+      if (f.drums) parts.push(`Of ${f.drums.true_hits} drum hits it found ${b(pct(f.drums.recall))}; ${b(pct(f.drums.precision))} of the hits it reported are real.`);
       if (f.tempo_verdict !== "ok") parts.push(`The true tempo is ${f.tempo_true} bpm: the estimate is ${b(f.tempo_verdict)}. Give the tempo to put it right.`);
     }
     if (!info.tempo_given && info.grid_agreement !== undefined && info.grid_agreement < 0.6) {
@@ -512,6 +556,7 @@ $("file").addEventListener("change", (e) => chooseFile(e.target.files[0]));
 $("example").addEventListener("change", chooseExample);
 $("example-as").addEventListener("change", sourceChanged);
 $("go").addEventListener("click", () => convert(false));
+$("stop").addEventListener("click", stopEngine);
 $("tempo").addEventListener("keydown", (e) => { if (e.key === "Enter") convert(false); });
 $("play").addEventListener("click", toggle);
 document.querySelectorAll('input[name="ab"]').forEach((r) => r.addEventListener("change", swap));
@@ -560,12 +605,15 @@ window.addEventListener("resize", () => { clearTimeout(resizing); resizing = set
   const select = $("example");
   select.append(new Option("an example…", ""));
   for (const entry of state.examples) select.append(new Option(entry.title, entry.file));
+  progress(null);
   try {
-    await ask("init", {});
+    await startEngine();
   } catch (err) {
+    progress(undefined);
     status("The engine could not start: " + err.message + " Check the connection and reload.", true);
     return;
   }
+  progress(undefined);
   $("version").textContent = state.engine.version;
   if (!state.engine.numpy) {
     for (const option of $("example-as").options) option.disabled = option.value !== "midi";

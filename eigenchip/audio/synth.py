@@ -25,6 +25,7 @@ TIMBRES = {
     "saw": ([1.0 / h for h in range(1, 24)], 0.004, 0.0, 0.03),
     "organ": ([1.0, 0.6, 0.35, 0.25, 0.1, 0.08], 0.012, 0.0, 0.06),
     "pluck": ([1.0 / h for h in range(1, 16)], 0.002, 3.0, 0.05),
+    "pad": ([1.0, 0.5, 0.28, 0.16, 0.1, 0.06], 0.45, 0.0, 0.6),      # swells in, lingers
 }
 BAND = ["saw", "organ", "triangle", "square", "pluck"]      # one voice per channel in the "band" setting
 

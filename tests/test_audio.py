@@ -237,6 +237,79 @@ class TranscriberTests(unittest.TestCase):
 
 
 @needs_numpy
+class DrumsDeepTonesAndLinesTests(unittest.TestCase):
+    def test_drums_are_found_and_not_imagined(self):
+        from eigenchip.audio.transcribe import Spectrum, find_drums
+        score = piece("groove")
+        beat = 60.0 / score.tempo
+        kinds = {36: "k", 38: "s"}
+        truth = [(n.start * beat, kinds.get(n.pitch, "h")) for n in score.notes if n.drum]
+        spec = Spectrum(synth.render(score, "band"))
+        res = evaluate.drum_scores(truth, find_drums(spec))
+        self.assertGreaterEqual(res["precision"], 0.9, res)
+        self.assertGreaterEqual(res["recall"], 0.6, res)
+        self.assertTrue(spec.kicks)
+        for name in ("waltz", "crossing"):                      # no drums in these: none should be heard
+            self.assertEqual(find_drums(Spectrum(synth.render(piece(name), "band"))), [], name)
+        self.assertEqual(evaluate.drum_scores([(1.0, "k")], [(1.02, "k"), (1.0, "s")])["precision"], 0.5)
+
+    def test_sub_bass_needs_the_deep_window(self):
+        from eigenchip.audio.transcribe import Spectrum, transcribe
+        score = piece("deep_drone")
+        samples = synth.render(score, "sine")
+        lows = lambda spec: {n[2] for n in transcribe(spec, "pads") if n[2] < 36}      # noqa: E731
+        self.assertEqual(lows(Spectrum(samples)), {22, 24, 26})                 # Bb0, C1, D1: 29 to 37 Hz
+        self.assertNotEqual(lows(Spectrum(samples, deep=False)), {22, 24, 26})  # the ordinary window cannot tell
+
+    def test_slow_reading_suits_sustained_sound(self):
+        from eigenchip.audio.transcribe import Spectrum, transcribe
+        score = piece("deep_drone")
+        spec = Spectrum(synth.render(score, "pad"))
+        score_of = lambda m: evaluate.note_scores(synth.truth(score), [n[:3] for n in transcribe(spec, m)],     # noqa: E731
+                                                  tolerance=0.25)["f1"]
+        self.assertGreaterEqual(score_of("pads"), 0.8)
+        self.assertGreater(score_of("pads"), score_of("nmf") + 0.2)
+
+    def test_lines_are_found_again(self):
+        from eigenchip.voices import consistency, flatten, separate
+        score = piece("twinkle")
+        flat = flatten(score)
+        self.assertEqual(flat.channels(), [0])
+        apart = separate(flat)
+        self.assertEqual(len(apart.notes), len(score.notes))
+        self.assertGreaterEqual(len(apart.channels()), 2)
+        self.assertTrue(apart.info["lines_guessed"])
+        self.assertEqual(consistency(score, apart), 1.0)
+        self.assertLess(consistency(score, flat.__class__(
+            [Note(n.start, n.dur, n.pitch, n.vel, i % 3) for i, n in enumerate(score.notes)], score.tempo)), 0.6)
+        mean = lambda ch: sum(n.pitch for n in apart.notes if n.channel == ch) / float(     # noqa: E731
+            sum(1 for n in apart.notes if n.channel == ch))
+        self.assertGreater(mean(0), mean(apart.channels()[-1]))                 # numbered from the top down
+        groove = separate(flatten(piece("groove")))
+        self.assertEqual(sum(1 for n in groove.notes if n.drum), 84)            # drums are left alone
+        # with the channels gone, the pad piece loses its tune; with lines found again, most of it is back
+        crossing = piece("crossing")
+        tune = lambda s: metrics.evaluate(quantize(crossing), arrange(quantize(s), "roles"), None,      # noqa: E731
+                                          {"melody": 0})["melody_recall"]
+        self.assertEqual(tune(flatten(crossing)), 0.0)
+        self.assertGreaterEqual(tune(separate(flatten(crossing))), 0.7)
+
+    def test_the_reader_reports_progress_drums_and_lines(self):
+        from eigenchip.readers.audio import score_from_samples
+        seen = []
+        score = score_from_samples(synth.render(piece("groove"), "band"),
+                                   progress=lambda fraction, text: seen.append((fraction, text)))
+        self.assertGreater(len(seen), 5)
+        self.assertEqual([f for f, _t in seen], sorted(f for f, _t in seen))
+        self.assertEqual(seen[-1][0], 1.0)
+        self.assertGreater(sum(1 for n in score.notes if n.drum), 40)
+        self.assertEqual(score.info["drum_hits"], sum(1 for n in score.notes if n.drum))
+        self.assertGreaterEqual(len(score.channels()), 2)
+        plain = score_from_samples(synth.render(piece("waltz"), "band"), drums=False, voices=0)
+        self.assertEqual((plain.channels(), sum(1 for n in plain.notes if n.drum)), ([0], 0))
+
+
+@needs_numpy
 class ReaderTests(unittest.TestCase):
     def wav(self, name, **kw):
         score = piece(name)
