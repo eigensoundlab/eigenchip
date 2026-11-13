@@ -139,7 +139,9 @@ class PageTests(unittest.TestCase):
         with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
             html = f.read()
         for ref in re.findall(r'(?:src|href)="([^"#:]+)"', html):
-            self.assertTrue(os.path.isfile(os.path.join(WEB, ref)), ref)
+            self.assertTrue(os.path.isfile(os.path.join(WEB, ref.split("?")[0])), ref)
+        # scripts and styles carry the version, so a browser never pairs an old script with a new page
+        self.assertEqual(re.findall(r'app\.(?:js|css)\?v=([0-9.]+)"', html), [__version__, __version__])
         with open(os.path.join(WEB, "app.js"), encoding="utf-8") as f:
             js = f.read()
         ids = set(re.findall(r'\bid="([^"]+)"', html))

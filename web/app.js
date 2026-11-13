@@ -10,6 +10,8 @@ const RATE = 22050;
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const BLACK = [false, true, false, true, false, false, true, false, true, false, true, false];
 const KEYS_W = 38;
+// the version in this script's address keeps a browser from mixing an old script with a new page
+const RELEASE = ((document.currentScript && document.currentScript.src.split("v=")[1]) || "").split("&")[0];
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 const state = {
@@ -32,7 +34,7 @@ let worker = null;
 const waiting = new Map();
 let sequence = 0;
 function startEngine() {
-  worker = new Worker("worker.js" + location.search, { type: "module" });
+  worker = new Worker("worker.js" + (location.search ? location.search + "&" : "?") + "v=" + RELEASE, { type: "module" });
   worker.onmessage = (event) => {
     const m = event.data;
     if (m.type === "status") return status(m.text + "…");
@@ -134,7 +136,7 @@ async function sourceBytes() {
   if (s.bytes) return s.bytes;
   if (s.file) s.bytes = await s.file.arrayBuffer();
   else {
-    const res = await fetch("../corpus/" + s.example.file);
+    const res = await fetch("../corpus/" + s.example.file, { cache: "no-cache" });
     if (!res.ok) throw new Error("Could not load the example (" + res.status + ").");
     s.bytes = await res.arrayBuffer();
   }
@@ -597,7 +599,7 @@ window.addEventListener("resize", () => { clearTimeout(resizing); resizing = set
 
 (async function start() {
   try {
-    const res = await fetch("../corpus/manifest.json");
+    const res = await fetch("../corpus/manifest.json", { cache: "no-cache" });
     state.examples = res.ok ? await res.json() : [];
   } catch (err) {
     state.examples = [];
