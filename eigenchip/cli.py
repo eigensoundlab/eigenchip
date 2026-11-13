@@ -84,13 +84,14 @@ def cmd_transcribe(args):
     if not is_audio(args.input):
         raise ValueError("transcribe expects a sound file; %s is already notes" % args.input)
     score = _read(args)
-    pitches = [n.pitch for n in score.notes]
+    pitches = [n.pitch for n in score.notes if not n.drum]
     if args.output:
         write_midi(args.output, score)
-    print("%s%s: %d notes%s, %.1f beats at %.1f bpm" % (
+    hits = len(score.notes) - len(pitches)
+    print("%s%s: %d notes%s%s, %.1f beats at %.1f bpm" % (
         args.input, (" -> " + args.output) if args.output else "", len(pitches),
         (" from %s to %s" % (pitch_name(min(pitches)), pitch_name(max(pitches)))) if pitches else "",
-        score.length, score.tempo))
+        (" and %d drum hits" % hits) if hits else "", score.length, score.tempo))
     return 0
 
 
