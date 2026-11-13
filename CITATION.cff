@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use eigenchip in your research, please cite it as below."
+title: "eigenchip: reducing music to a few chip voices"
+type: software
+authors:
+  - family-names: Sandner
+    given-names: Daniel
+    orcid: "https://orcid.org/0000-0002-1041-814X"
+repository-code: "https://github.com/eigensoundlab/eigenchip"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-11-13"
+keywords:
+  - music information retrieval
+  - symbolic music
+  - arrangement
+  - voice reduction
+  - chiptune
+  - MIDI
+abstract: >-
+  A research toolkit for reducing polyphonic music to three or four monophonic
+  voices playable by a simple chip synthesizer. Interchangeable arrangement
+  strategies are compared on a fixed corpus with symbolic measures of how much
+  melody, bass, harmony and rhythm survive the reduction.
