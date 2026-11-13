@@ -6,6 +6,12 @@
     eigenchip convert song.mid -o song.json [--arranger roles-arp] [--name theme]
     eigenchip compare song.mid [--melody 0 --bass 2]
     eigenchip render song.json song.wav --clio /path/to/CLIo
+
+Sound files (wav, ogg, mp3, flac, m4a...) work wherever a MIDI file does; they
+are transcribed first, which needs NumPy (and ffmpeg for anything but WAV):
+
+    eigenchip transcribe song.ogg -o song.mid [--transcriber nmf] [--tempo 96]
+    eigenchip convert song.mp3 -o song.json --tempo 96
 """
 from __future__ import annotations
 
@@ -17,6 +23,8 @@ import sys
 from . import __version__, metrics
 from .arrangers import ARRANGERS, DEFAULT, arrange
 from .ir import pitch_name, quantize
+from .audio.transcribe import DEFAULT as T_DEFAULT
+from .audio.transcribe import TRANSCRIBERS
 from .readers import read
 from .writers import clio
 
@@ -25,8 +33,27 @@ def _fmt(value):
     return "  -  " if value is None else "%.2f" % value
 
 
+def _read(args):
+    """Read the input; the audio options are ignored for MIDI."""
+    meter = None
+    if getattr(args, "meter", None):
+        num, _, den = args.meter.partition("/")
+        meter = (int(num), int(den or 4))
+    score = read(args.input, transcriber=getattr(args, "transcriber", None), tempo=getattr(args, "tempo", None),
+                 offset=getattr(args, "offset", None), meter=meter)
+    if score.info.get("source") == "audio":
+        info = score.info
+        print("transcribed with '%s': %d notes, tempo %.1f bpm (%s), first beat at %.2f s" % (
+            info.get("transcriber"), len(score.notes), score.tempo,
+            "given" if info.get("tempo_given") else "estimated", info.get("offset", 0.0)), file=sys.stderr)
+        if not info.get("tempo_given") and info.get("grid_agreement", 1.0) < 0.6:
+            print("warning: the notes do not sit well on a grid at this tempo (agreement %.2f). "
+                  "If it sounds wrong, give --tempo." % info["grid_agreement"], file=sys.stderr)
+    return score
+
+
 def cmd_info(args):
-    score = read(args.input)
+    score = _read(args)
     grid = quantize(score, args.steps_per_beat)
     mean_poly, max_poly = metrics.polyphony(grid)
     print("%s" % (score.title or args.input))
@@ -49,8 +76,24 @@ def cmd_info(args):
     return 0
 
 
+def cmd_transcribe(args):
+    from .midi import write_midi
+    from .readers import is_audio
+    if not is_audio(args.input):
+        raise ValueError("transcribe expects a sound file; %s is already notes" % args.input)
+    score = _read(args)
+    pitches = [n.pitch for n in score.notes]
+    if args.output:
+        write_midi(args.output, score)
+    print("%s%s: %d notes%s, %.1f beats at %.1f bpm" % (
+        args.input, (" -> " + args.output) if args.output else "", len(pitches),
+        (" from %s to %s" % (pitch_name(min(pitches)), pitch_name(max(pitches)))) if pitches else "",
+        score.length, score.tempo))
+    return 0
+
+
 def cmd_convert(args):
-    score = read(args.input)
+    score = _read(args)
     grid = quantize(score, args.steps_per_beat)
     arr = arrange(grid, args.arranger, args.voices)
     song = clio.to_song(arr, grid, args.bars_per_pattern, args.title)
@@ -71,7 +114,7 @@ def cmd_convert(args):
 
 
 def cmd_compare(args):
-    score = read(args.input)
+    score = _read(args)
     grid = quantize(score, args.steps_per_beat)
     truth = {}
     if args.melody is not None:
@@ -111,16 +154,31 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version="eigenchip %s" % __version__)
     sub = ap.add_subparsers(dest="command")
 
+    def audio(p):
+        g = p.add_argument_group("sound files only")
+        g.add_argument("--transcriber", choices=sorted(TRANSCRIBERS), help="how to find the notes (default %s)" % T_DEFAULT)
+        g.add_argument("--tempo", type=float, help="tempo in bpm, if you know it (otherwise estimated)")
+        g.add_argument("--offset", type=float, help="seconds from the start of the file to the first beat")
+        g.add_argument("--meter", help="time signature, e.g. 3/4 (default 4/4; it cannot be heard reliably)")
+
     def common(p):
         p.add_argument("input")
         p.add_argument("--steps-per-beat", type=int, default=4, help="grid resolution (default 4 = sixteenths)")
         p.add_argument("--voices", type=int, default=3, choices=(1, 2, 3), help="pitched voices (default 3)")
         p.add_argument("--bars-per-pattern", type=int, default=4)
+        audio(p)
 
     p = sub.add_parser("info", help="describe a file and guess the roles of its channels")
     p.add_argument("input")
     p.add_argument("--steps-per-beat", type=int, default=4)
+    audio(p)
     p.set_defaults(fn=cmd_info)
+
+    p = sub.add_parser("transcribe", help="turn a sound file into MIDI (what the audio reader heard)")
+    p.add_argument("input")
+    p.add_argument("-o", "--output", help="MIDI file to write")
+    audio(p)
+    p.set_defaults(fn=cmd_transcribe)
 
     p = sub.add_parser("convert", help="convert to a CLIo song")
     common(p)

@@ -3,6 +3,59 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-13 - audio: three transcription baselines
+
+**Set-up.** The corpus played by a small additive synthesizer in four tone colours
+(`sine`, `square`, `pluck`, and `band`, where each channel gets its own), transcribed by
+`mono`, `peaks` and `nmf`, and compared with the notes that were played (right pitch,
+onset within 50 ms). Numbers in `RESULTS-audio.md`.
+
+**What the table shows.**
+
+- *Fixed templates go a long way on clean audio.* `nmf` is ahead in every tone colour.
+  `peaks` loses mainly on the pieces with thick chords; a likely cause, not yet checked,
+  is that cancelling one note's overtones removes parts of the other notes with it.
+- *Pure sines are the hardest colour for summing methods, not the easiest.* With no
+  overtones, nothing separates a tone from the octave below it except the missing
+  fundamental. Weighting each candidate by the energy at its own fundamental helped
+  `mono` and `peaks` a great deal; sines remain their worst colour.
+- *Which pitch and when are two different measurements.* A 186 ms window resolves low
+  notes but smears time; onsets are taken from a 46 ms analysis instead. Repeated notes
+  are invisible in the long window: they are found as a notch in the pitch's own level
+  at an onset. This only works because the test notes are let go before the next begins
+  (90% of their length). Perfect legato repeats would be merged.
+- *Drums are the largest single problem.* On the piece hit hardest, the invented notes
+  are of two kinds: short low notes where the kick is (a kick *is* a short low tone), and
+  faint notes scattered through the rest. Median-filter separation is applied before
+  transcription and removes neither.
+- *Lossy compression is harmless* at the bit rates tried, down to 32 kbit/s MP3.
+- *Tempo doubling* on the Prelude: even sixteenths have no accent to say where the beat
+  is. The fit of tempo to transcribed onsets fixes small errors, not this one.
+- *The chain loses the roles, not the notes.* `nmf` transcriptions contain nearly all of
+  the melody, yet the arrangers put only about two thirds of it in the lead voice: with
+  everything on one channel, `roles` has nothing to choose between and falls back on
+  pitch height. `mono`, which hears only the most prominent line, keeps more melody than
+  either multi-pitch method - and no bass at all.
+
+**What the table cannot show.**
+
+- Anything about recordings. The synthesizer is dry, in tune and exactly on time; real
+  instruments have vibrato, reverberation, soft attacks and overtones that drift. These
+  scores are a ceiling.
+- Durations beyond the frame measure; note-offs are not scored separately.
+- Whether a mistake matters musically: a wrong octave in the bass and a wrong note in the
+  tune count the same.
+
+**Next.**
+
+1. Voice separation on the piano roll, so that arrangers get lines instead of one heap.
+   This is now the weakest link of the audio chain.
+2. Drums: detect and remove kicks before pitch analysis; transcribe kick, snare and hat
+   into the drum track instead of ignoring them.
+3. A harder test bed: detuned, reverberant, layered renderings, then recordings with
+   aligned MIDI.
+4. A trained transcription model as an optional reader, on the same table.
+
 ## 2026-11-13 - baseline: three arrangers, nine pieces
 
 **Set-up.** `skyline`, `roles`, `roles-arp` at three voices on a sixteenth-note grid,

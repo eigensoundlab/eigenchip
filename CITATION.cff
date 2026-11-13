@@ -8,11 +8,12 @@ authors:
     orcid: "https://orcid.org/0000-0002-1041-814X"
 repository-code: "https://github.com/eigensoundlab/eigenchip"
 license: Apache-2.0
-version: 0.1.0
+version: 0.2.0
 date-released: "2026-11-13"
 keywords:
   - music information retrieval
   - symbolic music
+  - automatic music transcription
   - arrangement
   - voice reduction
   - chiptune
@@ -21,4 +22,6 @@ abstract: >-
   A research toolkit for reducing polyphonic music to three or four monophonic
   voices playable by a simple chip synthesizer. Interchangeable arrangement
   strategies are compared on a fixed corpus with symbolic measures of how much
-  melody, bass, harmony and rhythm survive the reduction.
+  melody, bass, harmony and rhythm survive the reduction. Sound files are
+  read through interchangeable transcription baselines, measured on synthetic
+  audio of the same corpus.

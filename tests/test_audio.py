@@ -1,0 +1,301 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Daniel Sandner
+"""Tests for the audio front end. They need NumPy; the format tests also need ffmpeg."""
+import io
+import math
+import os
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+try:
+    import numpy as np
+except ImportError:                                             # pragma: no cover
+    np = None
+
+from eigenchip import cli, metrics                              # noqa: E402
+from eigenchip.arrangers import arrange                         # noqa: E402
+from eigenchip.audio import AudioError, analysis, decode, evaluate, synth       # noqa: E402
+from eigenchip.ir import Note, Score, quantize                  # noqa: E402
+from eigenchip.readers import is_audio, read                    # noqa: E402
+from eigenchip.writers import clio                              # noqa: E402
+
+CORPUS = os.path.join(ROOT, "corpus")
+FFMPEG = decode.ffmpeg_path()
+needs_numpy = unittest.skipIf(np is None, "NumPy is not installed")
+needs_ffmpeg = unittest.skipIf(np is None or not FFMPEG, "ffmpeg is not installed")
+
+
+def piece(name):
+    return read(os.path.join(CORPUS, name + ".mid"))
+
+
+def tmp(name):
+    return os.path.join(tempfile.mkdtemp(prefix="eigenchip-test-"), name)
+
+
+def tune(pitches, beats=1.0, tempo=120.0, channel=0):
+    return Score([Note(i * beats, beats, p, 100, channel) for i, p in enumerate(pitches)], tempo)
+
+
+def raw_wav(path, kind, channels, rate, bits, payload, extensible=False):
+    """A WAV file written by hand, so the reader is tested against the format, not against itself."""
+    align = channels * bits // 8
+    if extensible:
+        fmt = struct.pack("<HHIIHHHHIH14s", 0xFFFE, channels, rate, rate * align, align, bits, 22, bits, 0,
+                          kind, b"\x00\x00\x00\x00\x10\x00\x80\x00\x00\xaa\x00\x38\x9b\x71")
+    else:
+        fmt = struct.pack("<HHIIHH", kind, channels, rate, rate * align, align, bits)
+    body = b"fmt " + struct.pack("<I", len(fmt)) + fmt
+    body += b"LIST" + struct.pack("<I", 5) + b"abcde" + b"\x00"         # an odd-sized chunk to skip
+    body += b"data" + struct.pack("<I", len(payload)) + payload
+    with open(path, "wb") as f:
+        f.write(b"RIFF" + struct.pack("<I", 4 + len(body)) + b"WAVE" + body)
+
+
+@needs_numpy
+class DecodeTests(unittest.TestCase):
+    values = [0.0, 0.5, -0.5, 0.25, -1.0, 0.999]
+
+    def check(self, path, places):
+        frames, rate = decode.read_wav(path)
+        self.assertEqual((rate, frames.shape), (8000, (3, 2)))
+        for got, want in zip(frames.ravel(), self.values):
+            self.assertAlmostEqual(float(got), want, places=places)
+
+    def test_wav_encodings(self):
+        v = self.values
+        path = tmp("a.wav")
+        raw_wav(path, 1, 2, 8000, 16, struct.pack("<6h", *[int(round(x * 32767)) for x in v]))
+        self.check(path, 3)
+        raw_wav(path, 1, 2, 8000, 8, bytes(int(round(x * 127 + 128)) for x in v))
+        self.check(path, 1)
+        raw_wav(path, 1, 2, 8000, 24, b"".join(struct.pack("<i", int(round(x * 8388607)))[:3] for x in v))
+        self.check(path, 5)
+        raw_wav(path, 1, 2, 8000, 32, struct.pack("<6i", *[int(round(x * 2147483647)) for x in v]))
+        self.check(path, 5)
+        raw_wav(path, 3, 2, 8000, 32, struct.pack("<6f", *v))
+        self.check(path, 6)
+        raw_wav(path, 3, 2, 8000, 64, struct.pack("<6d", *v))
+        self.check(path, 6)
+        raw_wav(path, 1, 2, 8000, 16, struct.pack("<6h", *[int(round(x * 32767)) for x in v]), extensible=True)
+        self.check(path, 3)
+
+    def test_bad_files_are_reported_not_crashed_on(self):
+        path = tmp("bad.wav")
+        with open(path, "wb") as f:
+            f.write(b"this is not a sound file at all")
+        with self.assertRaises(AudioError):
+            decode.read_wav(path)
+        raw_wav(path, 2, 1, 8000, 4, b"\x00" * 64)                # ADPCM: not handled here
+        with self.assertRaises(AudioError):
+            decode.read_wav(path)
+        with self.assertRaises(ValueError):
+            read(tmp("song.xyz"))
+
+    def test_without_ffmpeg_the_message_says_what_to_do(self):
+        saved = dict(os.environ)
+        try:
+            os.environ["PATH"] = ""
+            os.environ.pop("EIGENCHIP_FFMPEG", None)
+            with self.assertRaises(AudioError) as caught:
+                decode.load(tmp("song.ogg"))
+            self.assertIn("ffmpeg", str(caught.exception))
+            self.assertIn("WAV", str(caught.exception))
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def test_write_read_and_resample(self):
+        t = np.arange(44100) / 44100.0
+        stereo = np.stack((np.sin(2 * math.pi * 440 * t), np.sin(2 * math.pi * 440 * t)), axis=1) * 0.5
+        path = tmp("tone.wav")
+        decode.write_wav(path, stereo, 44100)
+        samples, rate, info = decode.load(path)
+        self.assertEqual((rate, info["channels"], info["source_rate"], info["decoder"]), (22050, 2, 44100, "wav"))
+        self.assertAlmostEqual(len(samples) / 22050.0, 1.0, places=3)
+        spectrum = np.abs(np.fft.rfft(samples[:16384] * np.hanning(16384)))
+        self.assertAlmostEqual(np.argmax(spectrum) * 22050.0 / 16384, 440.0, delta=2.0)
+        high = np.sin(2 * math.pi * 9000 * np.arange(44100) / 44100.0)      # above the new Nyquist: must go
+        self.assertLess(float(np.abs(decode.resample(high, 44100, 11025)[200:-200]).max()), 0.02)
+
+    @needs_ffmpeg
+    def test_compressed_formats_through_ffmpeg(self):
+        samples = synth.render(tune([60, 64, 67, 72], tempo=120), "organ")
+        folder = os.path.dirname(tmp("x"))
+        wav = os.path.join(folder, "a.wav")
+        decode.write_wav(wav, samples)
+        for ext, flags in ((".flac", ["-c:a", "flac"]), (".ogg", ["-c:a", "libvorbis"]),
+                           (".mp3", ["-c:a", "libmp3lame"]), (".m4a", ["-c:a", "aac"])):
+            packed = os.path.join(folder, "a" + ext)
+            done = subprocess.run([FFMPEG, "-v", "error", "-y", "-i", wav] + flags + [packed],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if done.returncode != 0:
+                continue                                        # this ffmpeg was built without that encoder
+            back, rate, info = decode.load(packed)
+            self.assertEqual((rate, info["decoder"]), (22050, "ffmpeg"))
+            self.assertAlmostEqual(len(back) / 22050.0, len(samples) / 22050.0, delta=0.15)
+            self.assertTrue(is_audio(packed))
+            notes = {n.pitch for n in read(packed).notes}
+            self.assertTrue({60, 64, 67, 72} <= notes, "%s: %s" % (ext, sorted(notes)))
+        with open(os.path.join(folder, "junk.mp3"), "wb") as f:
+            f.write(b"\x00" * 300)
+        with self.assertRaises(AudioError):
+            decode.load(os.path.join(folder, "junk.mp3"))
+
+
+@needs_numpy
+class AnalysisTests(unittest.TestCase):
+    def test_reference_synth_plays_the_right_pitch(self):
+        for colour in synth.TIMBRES:
+            x = synth.render(tune([69], 2.0), colour)
+            spectrum = np.abs(np.fft.rfft(x[2000:2000 + 16384] * np.hanning(16384)))
+            self.assertAlmostEqual(np.argmax(spectrum) * 22050.0 / 16384, 440.0, delta=2.0, msg=colour)
+        self.assertEqual(synth.truth(tune([60, 62], tempo=60)), [(0.0, 1.0, 60), (1.0, 2.0, 62)])
+
+    def test_tempo_and_first_beat(self):
+        for name, octave_ok in (("twinkle", False), ("waltz", False), ("groove", False), ("bach_prelude", True)):
+            score = piece(name)
+            flux, fps = analysis.onset_strength(synth.render(score, "band"))
+            bpm, phase, confidence = analysis.estimate_tempo(flux, fps)
+            verdict = evaluate.tempo_verdict(bpm, score.tempo)
+            self.assertIn(verdict, ("ok", "double") if octave_ok else ("ok",), "%s: %.1f" % (name, bpm))
+            beat = 60.0 / bpm
+            if not octave_ok:                               # in even running notes any step could be the beat
+                self.assertLess(min(phase % beat, beat - phase % beat), 0.03, name)
+            self.assertGreater(confidence, 0.2)
+        self.assertEqual(analysis.estimate_tempo(np.zeros(1000), 86.0)[2], 0.0)     # silence: no opinion
+
+    def test_grid_fit_repairs_a_slightly_wrong_tempo(self):
+        step = 60.0 / 97.3 / 4
+        onsets = [0.21 + step * k for k in range(0, 240, 3)]
+        bpm, offset, agreement = analysis.fit_grid(onsets, 96.0, 0.2)
+        self.assertAlmostEqual(bpm, 97.3, delta=0.05)
+        self.assertAlmostEqual(offset, 0.21, delta=0.01)
+        self.assertGreater(agreement, 0.95)
+        self.assertEqual(analysis.fit_grid(onsets[:3], 96.0, 0.2)[0], 96.0)         # too little to go on
+
+    def test_scoring(self):
+        ref = [(0.0, 0.5, 60), (0.5, 1.0, 64), (1.0, 1.5, 67)]
+        same = evaluate.note_scores(ref, ref)
+        self.assertEqual((same["precision"], same["recall"], same["f1"], same["frame_f1"]), (1.0, 1.0, 1.0, 1.0))
+        late = evaluate.note_scores(ref, [(a + 0.2, b + 0.2, p) for a, b, p in ref])
+        self.assertEqual(late["f1"], 0.0)
+        octave = evaluate.note_scores(ref, [(a, b, p + 12) for a, b, p in ref])
+        self.assertEqual((octave["f1"], octave["f1_class"]), (0.0, 1.0))
+        extra = evaluate.note_scores(ref, ref + [(0.0, 0.5, 72), (0.01, 0.5, 60)])
+        self.assertAlmostEqual(extra["precision"], 0.6)
+        self.assertEqual(extra["recall"], 1.0)
+        self.assertEqual(evaluate.note_scores(ref, [])["f1"], 0.0)
+        self.assertEqual([evaluate.tempo_verdict(b, 100) for b in (101, 200, 50, 120)], ["ok", "double", "half", "wrong"])
+
+
+@needs_numpy
+class TranscriberTests(unittest.TestCase):
+    def scores(self, score, method, colour="band", **kw):
+        from eigenchip.audio.transcribe import transcribe
+        notes = [n[:3] for n in transcribe(synth.render(score, colour, **kw), method)]
+        return evaluate.note_scores(synth.truth(score), notes)
+
+    def test_a_single_line_is_found_by_every_method(self):
+        melody = tune([64, 64, 65, 67, 67, 65, 64, 62, 60, 60, 62, 64, 64, 62, 62], 0.5, 104)
+        for method in ("mono", "peaks", "nmf"):
+            for colour in ("square", "pluck"):
+                res = self.scores(melody, method, colour)
+                self.assertGreaterEqual(res["f1"], 0.9, "%s on %s: %s" % (method, colour, res))
+
+    def test_repeated_notes_are_told_apart(self):
+        res = self.scores(tune([67] * 8, 0.5, 100), "nmf", "organ")
+        self.assertEqual((res["notes"], res["recall"]), (8, 1.0))
+
+    def test_chords_need_a_multi_pitch_method(self):
+        chords = Score([Note(b * 2, 2, p, 100, 0) for b, chord in enumerate([(48, 64, 67), (53, 65, 69), (55, 62, 71)])
+                        for p in chord], 90)
+        self.assertGreaterEqual(self.scores(chords, "nmf", "organ")["f1"], 0.9)
+        self.assertGreaterEqual(self.scores(chords, "peaks", "organ")["recall"], 0.6)
+        self.assertLessEqual(self.scores(chords, "mono", "organ")["recall"], 0.4)       # one line at most
+
+    def test_corpus_pieces(self):
+        for name, floor in (("waltz", 0.9), ("triplets", 0.9), ("bach_prelude", 0.9)):
+            res = self.scores(piece(name), "nmf", drums=False)
+            self.assertGreaterEqual(res["f1"], floor, "%s: %s" % (name, res))
+
+    def test_silence_and_noise_do_not_crash(self):
+        from eigenchip.audio.transcribe import TRANSCRIBERS, transcribe
+        rng = np.random.RandomState(1)
+        for method in TRANSCRIBERS:
+            self.assertEqual(transcribe(np.zeros(22050, dtype=np.float32), method), [])
+            self.assertIsInstance(transcribe(rng.uniform(-0.3, 0.3, 22050).astype(np.float32), method), list)
+        with self.assertRaises(ValueError):
+            transcribe(np.zeros(100, dtype=np.float32), "magic")
+
+
+@needs_numpy
+class ReaderTests(unittest.TestCase):
+    def wav(self, name, **kw):
+        score = piece(name)
+        path = tmp(name + ".wav")
+        decode.write_wav(path, synth.render(score, "band", drums=False, **kw))
+        return score, path
+
+    def test_audio_becomes_the_same_grid_as_the_midi_file(self):
+        score, path = self.wav("waltz")
+        heard = read(path, meter=(3, 4))
+        self.assertEqual(heard.info["source"], "audio")
+        self.assertFalse(heard.info["tempo_given"])
+        self.assertAlmostEqual(heard.tempo, score.tempo, delta=0.5)
+        want = {(n.start, n.pitch) for n in quantize(score).pitched}
+        got = {(n.start, n.pitch) for n in quantize(heard).pitched}
+        self.assertGreaterEqual(len(want & got) / float(len(want)), 0.95)
+        self.assertLessEqual(len(got - want), 3)
+        song = clio.to_song(arrange(quantize(heard), "roles-arp"), quantize(heard))
+        self.assertEqual(clio.validate(song), [])
+
+    def test_a_given_tempo_is_used_as_it_is(self):
+        score, path = self.wav("bach_prelude")
+        guessed = read(path)
+        self.assertEqual(evaluate.tempo_verdict(guessed.tempo, score.tempo), "double")  # the known weakness
+        told = read(path, tempo=72)
+        self.assertEqual((told.tempo, told.info["tempo_given"]), (72.0, True))
+        grid, heard = quantize(score), quantize(told)
+        res = metrics.evaluate(grid, arrange(heard, "skyline"))
+        self.assertGreaterEqual(res["pitch_recall"], 0.9)
+        self.assertGreaterEqual(res["onset_f1"], 0.9)
+
+    def test_command_line(self):
+        _score, path = self.wav("triplets")
+        mid, song = tmp("out.mid"), tmp("out.json")
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            self.assertEqual(cli.main(["transcribe", path, "-o", mid, "--transcriber", "peaks"]), 0)
+            self.assertEqual(cli.main(["convert", path, "-o", song, "--tempo", "100"]), 0)
+            self.assertEqual(cli.main(["info", path]), 0)
+            self.assertEqual(cli.main(["transcribe", os.path.join(CORPUS, "waltz.mid")]), 1)
+        self.assertIn("transcribed with 'peaks'", err.getvalue())
+        self.assertIn("tempo 100.0 bpm (given)", err.getvalue())
+        self.assertIn("already notes", err.getvalue())
+        self.assertGreater(len(read(mid).notes), 40)
+        with open(song, encoding="utf-8") as f:
+            self.assertIn('"patterns"', f.read())
+
+
+class WithoutNumpyTests(unittest.TestCase):
+    def test_midi_never_needs_numpy(self):
+        code = ("import sys; sys.modules['numpy'] = None; sys.path.insert(0, %r)\n"
+                "from eigenchip import cli\n"
+                "from eigenchip.readers import read\n"
+                "assert len(read(%r).notes) > 10\n"
+                "try:\n    read('song.wav')\nexcept ValueError as e:\n    assert 'NumPy' in str(e), e\n"
+                "else:\n    raise SystemExit('no error')\n" % (ROOT, os.path.join(CORPUS, "waltz.mid")))
+        done = subprocess.run([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8", "replace"))
+
+
+if __name__ == "__main__":
+    unittest.main()

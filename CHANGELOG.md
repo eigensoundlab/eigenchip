@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.0 - 2026-11-13
+
+Audio in: sound files can be read, by transcribing them.
+
+- Decoding: WAV (8/16/24/32-bit PCM, 32/64-bit float, extensible) with the standard
+  library and NumPy; Ogg, Opus, MP3, FLAC, M4A/AAC, AIFF and others through ffmpeg.
+- Analysis: spectrogram, harmonic-percussive separation, onset strength, tempo by
+  autocorrelation, and a fit of tempo and first beat to the transcribed onsets.
+- Three transcription baselines behind one interface: `mono` (predominant pitch on a
+  smoothed path), `peaks` (harmonic summation with cancellation), `nmf` (fixed harmonic
+  templates). One shared routine cuts activations into notes and detects repeated notes.
+- A reference synthesizer that plays the corpus in several tone colours, so that the
+  audio has known answers; note-level and frame-level transcription scores.
+- `experiments/audio.py` writes `RESULTS-audio.md`: transcribers by tone colour, the
+  effect of drums and of lossy compression, tempo, and the whole chain from audio to
+  arrangement against the same arrangement from MIDI.
+- Command line: `transcribe` (sound file to MIDI); `convert`, `compare` and `info` accept
+  sound files, with `--transcriber`, `--tempo`, `--offset` and `--meter`.
+- NumPy is needed for audio only (`pip install eigenchip[audio]`); the MIDI path still
+  has no dependencies.
+
 ## 0.1.0 - 2026-11-13
 
 First version: the frame that later experiments hang on.
