@@ -1,0 +1,105 @@
+[
+  {
+    "file": "ode_to_joy.mid",
+    "title": "Ode to Joy",
+    "meter": "4/4",
+    "tempo": 104.0,
+    "truth": {
+      "melody": 0,
+      "bass": 2
+    },
+    "source": "Beethoven's theme (public domain) with block chords, bass and drums.",
+    "stresses": "The ordinary case: tune on top, chords in the middle, bass below."
+  },
+  {
+    "file": "twinkle.mid",
+    "title": "Twinkle (Alberti bass)",
+    "meter": "4/4",
+    "tempo": 96.0,
+    "truth": {
+      "melody": 0
+    },
+    "source": "Traditional tune (public domain) over an Alberti bass.",
+    "stresses": "Two channels only; the accompaniment is a broken chord, not a bass line."
+  },
+  {
+    "file": "bach_prelude.mid",
+    "title": "Prelude in C, opening (simplified)",
+    "meter": "4/4",
+    "tempo": 72.0,
+    "truth": {},
+    "source": "Opening bars of Bach's Prelude in C, BWV 846 (public domain), simplified to plain sixteenths.",
+    "stresses": "One channel, no melody at all: pure arpeggio. Is the harmony recovered?"
+  },
+  {
+    "file": "frere_jacques.mid",
+    "title": "Frere Jacques (three-part round)",
+    "meter": "4/4",
+    "tempo": 108.0,
+    "truth": {
+      "melody": 0
+    },
+    "source": "Traditional round (public domain) in three parts, the second part an octave above the first.",
+    "stresses": "Voices imitate and cross; the first voice is not the highest."
+  },
+  {
+    "file": "crossing.mid",
+    "title": "Crossing (pad above the tune)",
+    "meter": "4/4",
+    "tempo": 92.0,
+    "truth": {
+      "melody": 0,
+      "bass": 2
+    },
+    "source": "Written for this corpus.",
+    "stresses": "A sustained pad sits above the tune. Pitch-only methods take the pad for the melody."
+  },
+  {
+    "file": "dense_chords.mid",
+    "title": "Dense chords (six-note voicings)",
+    "meter": "4/4",
+    "tempo": 84.0,
+    "truth": {
+      "melody": 0,
+      "bass": 2
+    },
+    "source": "Written for this corpus.",
+    "stresses": "Six-note chords: far more harmony than three voices can carry."
+  },
+  {
+    "file": "waltz.mid",
+    "title": "Little Waltz (3/4)",
+    "meter": "3/4",
+    "tempo": 144.0,
+    "truth": {
+      "melody": 0,
+      "bass": 2
+    },
+    "source": "Written for this corpus.",
+    "stresses": "3/4 time, bass on the first beat only."
+  },
+  {
+    "file": "triplets.mid",
+    "title": "Triplets (off the grid)",
+    "meter": "4/4",
+    "tempo": 100.0,
+    "truth": {
+      "melody": 0,
+      "bass": 1
+    },
+    "source": "Written for this corpus.",
+    "stresses": "Eighth-note triplets do not fit a sixteenth-note grid."
+  },
+  {
+    "file": "groove.mid",
+    "title": "Groove (syncopation and drums)",
+    "meter": "4/4",
+    "tempo": 110.0,
+    "truth": {
+      "melody": 0,
+      "bass": 1
+    },
+    "source": "Written for this corpus.",
+    "stresses": "Syncopated sixteenths, a busy bass and a drum kit."
+  }
+]
