@@ -49,7 +49,7 @@ class SessionTests(unittest.TestCase):
         json.loads(to_json(view))                               # everything crosses into JavaScript as JSON
         self.assertEqual((view["judged_against"], view["offset"], view["played"]), ("file", 0.0, None))
         self.assertEqual([v["role"] for v in view["voices"]], ["lead", "bass", "chords"])
-        self.assertEqual([r["arranger"] for r in view["scores"]], ["skyline", "roles", "roles-arp"])
+        self.assertEqual([r["arranger"] for r in view["scores"]], ["skyline", "roles", "roles-arp", "expand"])
         chosen = view["scores"][2]
         self.assertEqual((chosen["melody_recall"], chosen["bass_recall"]), (1.0, 1.0))
         self.assertEqual(view["steps"], 256)
