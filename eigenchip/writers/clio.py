@@ -54,6 +54,40 @@ def _mark(levels, a, b, bend=None, key=None):
     return "" if mean >= 9 else "@%d" % max(1, mean)
 
 
+BEND = 1.5                      # levels: a held note is struck again where its loudness strays this far from a straight line
+SHORTEST = 4                    # steps: but never more often than this
+
+
+def _spans(levels, a, b, bend=BEND, shortest=SHORTEST):
+    """Cut steps a..b where the level curve turns: ``[(a, x), (x, y), ... (z, b)]``.
+
+    One token can say "from this level to that one" and no more. A long note
+    under which the music swells and fades again would stay flat; cut where the
+    curve leaves the straight line, each piece can follow it. The cost is that
+    the note is struck again there.
+    """
+    if not levels or isinstance(levels, dict) or b - a < 2 * shortest:
+        return [(a, b)]
+    out, start = [], a
+    while b - start >= 2 * shortest:
+        end = b
+        while end - start > shortest:
+            span = levels[start:end] or levels[-1:]
+            n = len(span) - 1
+            if n < 1 or max(abs(span[i] - (span[0] + (span[-1] - span[0]) * i / float(n))) for i in range(n + 1)) <= bend:
+                break
+            end -= 1
+        if end >= b:
+            break
+        end = min(end, b - shortest)                        # the last piece is long enough to be heard as one
+        if end - start < shortest:
+            break
+        out.append((start, end))
+        start = end
+    out.append((start, b))
+    return out
+
+
 def _rest(length):
     return "." if length == 1 else ".:%d" % length
 
@@ -102,8 +136,9 @@ def _track(events, start, length, bar, levels=None):
             bend = ((p0 + (p1 - p0) * f0, p0 + (p1 - p0) * f1),
                     (int(round(l0 + (l1 - l0) * f0)), int(round(l0 + (l1 - l0) * f1))))
             pitches = [int(round(bend[0][0]))]
-        mark = _mark(levels, a, b, bend, (ev_start, pitches[0]))
-        emit(lambda n, p=pitches, m=mark: _token(p, n, m), a, b)
+        for a, b in ([(a, b)] if bend else _spans(levels, a, b)):
+            mark = _mark(levels, a, b, bend, (ev_start, pitches[0]))
+            emit(lambda n, p=pitches, m=mark: _token(p, n, m), a, b)
         sounded = True
         pos = b
     if pos < end:

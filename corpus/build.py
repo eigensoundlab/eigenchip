@@ -182,6 +182,34 @@ def deep_drone():
     return Score(notes, 60, (4, 4), "Deep drone (pads and sub-bass)", {0: "pad", 1: "sub", 2: "glass"})
 
 
+def long_tune():
+    # the texture of slow orchestral writing: the tune in long notes in the middle, a figure moving above it,
+    # held chords around it and a bass below
+    tune = "D4:3 E4 | F4:4 | A4:3 G4 | E4:4 | F4:3 G4 | A4:2 D5:2 | C5:3 A4 | D4:4"
+    figure = {"Dm": "A5:.5 D6:.5 F6:.5 D6:.5", "Bb": "Bb5:.5 D6:.5 F6:.5 D6:.5", "F": "A5:.5 C6:.5 F6:.5 C6:.5",
+              "C": "G5:.5 C6:.5 E6:.5 C6:.5", "Am": "A5:.5 C6:.5 E6:.5 C6:.5"}
+    held = {"Dm": "[F3 A3]", "Bb": "[F3 Bb3]", "F": "[F3 C4]", "C": "[E3 G3]", "Am": "[E3 A3]"}
+    low = {"Dm": "D2", "Bb": "Bb1", "F": "F2", "C": "C2", "Am": "A1"}
+    chords = "Dm Bb F C Dm F Am Dm".split()
+    notes = (part(tune, 0, 48, 100) + part(" ".join(figure[c] + " " + figure[c] for c in chords), 1, 46, 64)
+             + part(" ".join(held[c] + ":4" for c in chords), 2, 89, 56) + part(" ".join(low[c] + ":4" for c in chords), 3, 43, 88))
+    return Score(notes, 76, (4, 4), "Long tune (slow melody under a moving figure)",
+                 {0: "melody", 1: "figure", 2: "held chords", 3: "bass"})
+
+
+def octaves():
+    # a tune played by two instruments an octave apart, as an orchestra doubles it, over a rocking inner part
+    tune = "G4:2 A4 B4 | D5:3 B4 | C5:2 B4 A4 | G4:4 | E4:2 G4 C5 | B4:3 G4 | A4:2 F#4 D4 | G4:4"
+    above = tune.replace("5", "6").replace("4", "5")
+    inner = {"G": "B3:.5 D4:.5", "C": "C4:.5 E4:.5", "D": "A3:.5 D4:.5", "Em": "B3:.5 E4:.5"}
+    low = {"G": "G2", "C": "C3", "D": "D2", "Em": "E2"}
+    chords = "G G C G C Em D G".split()
+    notes = (part(tune, 0, 48, 104) + part(above, 1, 73, 84)
+             + part(" ".join(" ".join([inner[c]] * 4) for c in chords), 2, 46, 56) + part(" ".join(low[c] + ":4" for c in chords), 3, 43, 88))
+    return Score(notes, 84, (4, 4), "Octaves (a tune doubled an octave above)",
+                 {0: "melody", 1: "the same, an octave above", 2: "inner part", 3: "bass"})
+
+
 PIECES = [
     ("ode_to_joy", ode_to_joy, {"melody": 0, "bass": 2},
      "Beethoven's theme (public domain) with block chords, bass and drums.",
@@ -213,6 +241,12 @@ PIECES = [
     ("deep_drone", deep_drone, {"bass": 1},
      "Written for this corpus.",
      "Slow pads over a sub-bass that goes down to 29 Hz. No tune, no attacks to count: a soundscape in small."),
+    ("long_tune", long_tune, {"melody": 0, "bass": 3},
+     "Written for this corpus.",
+     "The tune moves slowly, in long notes, in the middle of the texture; the busiest and the highest part is not the tune."),
+    ("octaves", octaves, {"melody": 0, "bass": 3},
+     "Written for this corpus.",
+     "The tune sounds in two octaves at once. Either octave is the tune; a line that hops between them is not."),
 ]
 
 

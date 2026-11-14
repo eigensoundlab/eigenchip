@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.0 - 2026-11-14
+
+The tune, followed with the whole piece in view.
+
+- **Following the tune.** The audio reader no longer leaves the melody to the sorting of
+  notes into lines, which decides one note at a time and has no memory. It chooses, over
+  the whole piece, the one line through the transcribed notes that carries the most
+  prominent sound for the least leaping (`eigenchip/audio/melody.py`): a note counts by
+  its length and by its standing among the notes sounding with it; the top of a chord,
+  and a move by step, count a little more; leaps cost, far leaps cost much more. The tune
+  becomes line 0 and the arrangers take it as the lead. `tune=False` (reader) gives the
+  old behaviour. From audio, the lead voice now keeps 0.81 of the melody over the corpus
+  where it kept 0.58.
+- **A MIDI file's melody part is also chosen by loudness.** `roles` now counts how loud
+  a part is played against the others; the melody is found in every piece of the corpus
+  that has one (1.00, from 0.70 with the two new pieces).
+- **Long notes follow the loudness.** A held note could say one thing about its level -
+  "from this to that". Where the loudness of the source leaves that straight line, the
+  note is now struck again and each piece follows the curve. Pedal notes no longer stay
+  flat under a swell.
+- **Two new corpus pieces** for the texture of slow orchestral writing: *Long tune* (the
+  melody in long notes in the middle, a figure moving above it) and *Octaves* (the melody
+  doubled an octave above; the strict melody score counts the lower octave only). All
+  results are regenerated; averages are not comparable with 0.6.0.
+- `RESULTS-audio.md` shows the whole chain three ways: no lines, lines found, tune
+  followed.
+
+On the author's two recordings, sound against sound, five voices: the orchestral piece
+0.76 / 0.81 / 0.89 / 0.44 before (harmony, bass, loudness, movement) and 0.75 / 0.77 /
+0.89 / 0.42 now, with a lead that leaps half as often and keeps to two and a half octaves
+instead of five; the ambient piece 0.63 / 0.66 / 0.78 / 0.30 and 0.64 / 0.67 / 0.79 / 0.31.
+The numbers do not say whether the lead is the melody a listener hears; that is for ears.
+
 ## 0.6.0 - 2026-11-14
 
 The first release shaped by real recordings: dynamics, more voices, a noise track, slides.

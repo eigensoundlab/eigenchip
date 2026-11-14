@@ -20,8 +20,10 @@ NAME = "roles"
 SUMMARY = "Guess melody and bass channels from statistics; top line of the rest."
 
 
-def score_lead(st, mean_all):
+def score_lead(st, mean_all, loud_all=None):
+    louder = 0.0 if loud_all is None else max(-1.0, min(1.0, (st["velocity"] - loud_all) / 24.0))
     return (1.2 * st["monophony"]
+            + 1.0 * louder                                     # the tune is played to be heard
             + 0.8 * min(1.0, st["distinct"] / 8.0)
             + 0.6 * st["movement"]
             + 1.0 * st.get("stepwise", 0.5)                     # a tune walks; a broken chord leaps
@@ -40,7 +42,12 @@ def pick_roles(grid):
     bass = lowest if (stats[lowest]["monophony"] >= 0.6 and stats[lowest]["mean_pitch"] < 55
                       and len(stats) >= 3) else None
     candidates = [ch for ch in stats if ch != bass]
-    lead = max(candidates, key=lambda ch: score_lead(stats[ch], mean_all))
+    loud_all = sum(stats[ch]["velocity"] * stats[ch]["notes"] for ch in candidates) / float(
+        sum(stats[ch]["notes"] for ch in candidates))
+    lead = max(candidates, key=lambda ch: score_lead(stats[ch], mean_all, loud_all))
+    known = grid.info.get("lead_channel")           # a reader that followed the tune itself says where it put it
+    if known in stats:
+        lead, bass = known, (bass if bass != known else None)
     return lead, bass, stats
 
 

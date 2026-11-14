@@ -138,15 +138,17 @@ def run(log=None):
                 grid = quantize(score)
                 ratio = {"double": 0.5, "half": 2.0}.get(out["tempo"][-1]["verdict"], 1.0)
                 for name in TRANSCRIBERS:
-                    for lines in (0, 5):
+                    for lines, follow, tag in ((0, False, ""), (5, False, ", lines found"), (5, True, ", tune followed")):
+                        if follow and name == "mono":
+                            continue                            # one line already: there is no tune to pick out
                         heard = score_from_samples(samples, transcriber=name, meter=score.meter, voices=lines,
-                                                   tempo=bpm * ratio if ratio != 1.0 else None)
+                                                   tempo=bpm * ratio if ratio != 1.0 else None, tune=follow)
                         heard_grid = quantize(heard)
                         for arranger in ("skyline", "roles-arp"):
                             if lines and arranger == "skyline":
                                 continue                        # skyline does not look at channels
                             res = metrics.evaluate(grid, arrange(heard_grid, arranger), None, entry.get("truth"))
-                            res.update(piece=entry["file"], source=name + (", lines found" if lines else ""),
+                            res.update(piece=entry["file"], source=name + tag,
                                        arranger=arranger)
                             out["chain"].append(res)
                 for arranger in ("skyline", "roles-arp"):
@@ -405,13 +407,16 @@ def report(out):
               "The arrangement made from the audio (tone colour `band`, no drums, tempo estimated;",
               "a doubled or halved tempo is put right first) judged against the notes of the MIDI file,",
               "next to the same arranger working from the MIDI file itself. Columns as in `RESULTS.md`.",
-              "`lines found` means the transcription was sorted into lines before arranging.", ""]
+              "`lines found` means the transcription was sorted into lines, one note at a time, before arranging",
+              "(`eigenchip/voices.py`). `tune followed` is what the reader does now: the tune is first chosen with the",
+              "whole piece in view (`eigenchip/audio/melody.py`) and only the rest is sorted into lines.", ""]
     for arranger in ("skyline", "roles-arp"):
         lines += ["### %s" % arranger, "",
                   "| source | " + " | ".join(E2E_HEAD[k] for k in E2E) + " |", "| --- |" + " ---: |" * len(E2E)]
         sources = ["midi"] + list(TRANSCRIBERS)
         if arranger != "skyline":
             sources += [t + ", lines found" for t in TRANSCRIBERS]
+            sources += [t + ", tune followed" for t in TRANSCRIBERS if t != "mono"]
         for source in sources:
             rows = [r for r in out["chain"] if r["arranger"] == arranger and r["source"] == source]
             lines.append("| %s | %s |" % ("MIDI file" if source == "midi" else "audio, " + source,

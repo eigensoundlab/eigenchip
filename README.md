@@ -13,9 +13,9 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.6.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Status: early (0.7.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangement strategies and four transcription
-baselines, finds drums, sorts transcribed notes into lines, and describes risers, falls,
+baselines, finds drums, follows the tune through a recording and sorts the other notes into lines, and describes risers, falls,
 swells and impacts apart from the notes, and follows the loudness and the lasting noise of a
 recording; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
 and scores every stage on a small corpus. Python 3.8+. The MIDI path has no dependencies;
@@ -177,7 +177,7 @@ same corpus:
   wrong neighbours appear beside them.
 - For sustained sound the slow reading (`pads`) is clearly better than `nmf`, which
   shreds a swelling pad into fragments; on ordinary music it is useless by design.
-- Tempo is right on eight pieces of ten, doubled on one, and wrong on the drone piece,
+- Tempo is right on ten pieces of twelve, doubled on one, and wrong on the drone piece,
   which has no pulse to find.
 - On real recordings (two of the author's, an orchestral and an ambient piece; no true
   notes, so judged sound against sound, see [RESULTS-audio.md](RESULTS-audio.md) and
@@ -196,13 +196,22 @@ same corpus:
 - Listening more closely helps little: three times the work buys one point of F1.
 - Cleaning does not rescue the lines. Light cleaning is safe and helps mostly where there
   are drums; strict cleaning trades recall for precision one for one. Neither changes
-  how much of the melody the arranger keeps (0.72, 0.72, 0.70): the mistake that breaks
+  how much of the melody the arranger keeps (0.81, 0.81, 0.80): the mistake that breaks
   lines is a held note cut in two, and in a note list that looks like a repeated note.
-- Sorting notes into lines works on clean notes and barely matters on transcribed ones.
-  With the channels of the MIDI files thrown away, the lead voice keeps 0.77 of the
-  melody; with lines found again, 0.85; with the true channels, 0.88. From audio the
-  same step changes almost nothing (0.73 against 0.72): the transcriber's stray notes
-  break the lines up.
+- Sorting notes into lines, one note at a time, works on clean notes and not on
+  transcribed ones. With the channels of the MIDI files thrown away, the lead voice keeps
+  0.61 of the melody; with lines found again, 0.86; with the true channels, 1.00. From
+  audio the same step does nothing (0.62 without it, 0.58 with): the transcriber's stray
+  notes break the lines up, and a line built note by note has no memory.
+- Choosing the tune with the whole piece in view does work (`eigenchip/audio/melody.py`):
+  the one line through the transcribed notes that carries the most prominent sound for
+  the least leaping. From audio the lead voice then keeps 0.81 of the melody instead of
+  0.58, and a slow tune under a busier, higher part - the texture of orchestral writing -
+  is found whole where it was lost whole. Prominence is what decides; a tune that is not
+  what one hears first is not found. On the author's orchestral recording the lead line
+  jumps about half as much (leaps of more than a sixth: 26 % of its moves before, 14 %
+  now) and stays between G2 and D5 instead of C#1 and D#6; the likeness of the sound as a
+  whole is about what it was.
 
 ## What the scores mean, and what they do not
 

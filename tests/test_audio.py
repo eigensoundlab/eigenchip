@@ -478,6 +478,63 @@ class QualityCleaningAndEffectsTests(unittest.TestCase):
 
 
 @needs_numpy
+class TuneTests(unittest.TestCase):
+    """Which notes are the tune, chosen with the whole piece in view (eigenchip/audio/melody.py)."""
+
+    def test_the_line_is_chosen_by_standing_and_by_how_it_moves(self):
+        from eigenchip.audio.melody import tune
+        # a slow tune in long notes, a busy figure above it: the tune is the one that stands out
+        slow = [(0.0, 2.0, 62, 0.9), (2.0, 4.0, 64, 0.9), (4.0, 6.0, 65, 0.9)]
+        busy = [(0.25 * i, 0.25 * i + 0.2, 81 + (i % 3) * 4, 0.4) for i in range(24)]
+        notes = slow + busy
+        self.assertEqual(tune(notes, [1.0] * 3 + [0.25] * 24), [0, 1, 2])
+        # of equal standing, the top of a chord leads
+        chords = [(t, t + 1.0, p, 0.8) for t in (0.0, 1.0, 2.0) for p in (60, 64, 67 + int(t))]
+        self.assertEqual([chords[i][2] for i in tune(chords, [1.0] * 9)], [67, 68, 69])
+        # one line plays one note at a time, and does not hop an octave and a half for a short note
+        hop = [(0.0, 1.0, 60, 1.0), (1.0, 1.2, 80, 1.0), (1.0, 2.0, 62, 1.0)]
+        self.assertEqual(tune(hop, [1.0, 1.0, 1.0]), [0, 2])
+        self.assertEqual(tune([(0.0, 1.0, 30, 1.0)], [1.0]), [])            # too low to be a tune
+
+    @needs_numpy
+    def test_a_slow_tune_is_followed_under_a_moving_figure(self):
+        from eigenchip.readers.audio import score_from_samples
+        score = piece("long_tune")
+        samples = synth.render(score, "band", drums=False)
+        truth = {"melody": 0, "bass": 3}
+        found = {}
+        for label, options in (("followed", {}), ("lines only", {"tune": False})):
+            heard = score_from_samples(samples, tempo=score.tempo, offset=0.0, effects=False, **options)
+            found[label] = metrics.evaluate(quantize(score), arrange(quantize(heard), "roles-arp"), None, truth)
+            if label == "followed":
+                self.assertEqual(heard.info["lead_channel"], 0)
+                self.assertEqual(heard.names[0], "tune")
+        self.assertGreaterEqual(found["followed"]["melody_recall"], 0.9)
+        self.assertLess(found["lines only"]["melody_recall"], 0.5)          # what sorting note by note makes of it
+        self.assertGreaterEqual(found["followed"]["bass_recall"], 0.9)
+
+    def test_a_midi_file_says_which_part_is_played_to_be_heard(self):
+        for name in ("long_tune", "octaves", "crossing"):
+            arr = arrange(quantize(piece(name)), "roles")
+            self.assertEqual(arr.notes["lead_channel"], 0, name)
+
+    def test_a_long_note_follows_the_loudness_in_pieces(self):
+        flat = [5] * 40
+        self.assertEqual(clio._spans(flat, 0, 40), [(0, 40)])
+        ramp = [int(round(2 + 6 * i / 39.0)) for i in range(40)]
+        self.assertEqual(clio._spans(ramp, 0, 40), [(0, 40)])                # one token can say "from 2 to 8"
+        hill = [2] * 20 + [8] * 4 + [3] * 16
+        spans = clio._spans(hill, 0, 40)
+        self.assertGreater(len(spans), 1)
+        self.assertEqual((spans[0][0], spans[-1][1]), (0, 40))
+        self.assertTrue(all(b - a >= clio.SHORTEST for a, b in spans))
+        self.assertTrue(all(a2 == b1 for (_a, b1), (a2, _b) in zip(spans, spans[1:])))
+        self.assertEqual(clio._spans(hill, 0, 6), [(0, 6)])                  # too short to cut
+        self.assertEqual(clio._spans({(0, 60): 5}, 0, 40), [(0, 40)])        # levels per note: nothing to follow
+        text, _sounded = clio._track([(0, 40, [36])], 0, 48, 16, hill)
+        self.assertGreaterEqual(text.count("c2"), 2)                         # struck again where the music swells
+
+
 class ReaderTests(unittest.TestCase):
     def wav(self, name, **kw):
         score = piece(name)

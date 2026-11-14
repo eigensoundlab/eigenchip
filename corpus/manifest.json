@@ -112,5 +112,29 @@
     },
     "source": "Written for this corpus.",
     "stresses": "Slow pads over a sub-bass that goes down to 29 Hz. No tune, no attacks to count: a soundscape in small."
+  },
+  {
+    "file": "long_tune.mid",
+    "title": "Long tune (slow melody under a moving figure)",
+    "meter": "4/4",
+    "tempo": 76.0,
+    "truth": {
+      "melody": 0,
+      "bass": 3
+    },
+    "source": "Written for this corpus.",
+    "stresses": "The tune moves slowly, in long notes, in the middle of the texture; the busiest and the highest part is not the tune."
+  },
+  {
+    "file": "octaves.mid",
+    "title": "Octaves (a tune doubled an octave above)",
+    "meter": "4/4",
+    "tempo": 84.0,
+    "truth": {
+      "melody": 0,
+      "bass": 3
+    },
+    "source": "Written for this corpus.",
+    "stresses": "The tune sounds in two octaves at once. Either octave is the tune; a line that hops between them is not."
   }
 ]

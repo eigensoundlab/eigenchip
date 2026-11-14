@@ -3,6 +3,66 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-14 - a lead line with a memory
+
+**Why.** By the author's ear, on his orchestral recording: better than before, but the
+main melody is not followed - "probably because the main orchestral melody is going
+through longer time space". Looking at the lead line confirmed it: 80 notes between C#1
+and D#6, a quarter of its moves leaps of more than a sixth. The lead was the top of a
+"line" that the note-by-note sorting (`voices.py`) had assembled from five registers.
+
+**Two test pieces first.** Nothing in the corpus had this texture. *Long tune*: a melody
+in notes of three and four beats in the middle register, an eighth-note figure above it,
+held chords, a bass. *Octaves*: a melody doubled an octave higher. Before any change the
+whole chain kept 0.00 of either melody (0.50 of the second in any octave).
+
+**Two ways tried.**
+- *Frame by frame*: the strongest pitch per frame along a smooth path (the existing `mono`
+  reader), with a state for silence and a pull towards a slowly moving register. Finds
+  the long tune, but must always follow something: in the gaps of the tune it jumps to
+  the figure and back (1.7 notes per melody note, 0.67 of its moves leaps). A preference
+  for higher pitches repairs the dense chords and breaks the crossing piece; no setting
+  did both.
+- *Note by note, but all at once*: the best chain through the transcribed notes, by
+  dynamic programming. A chain may rest, so it does not have to fill gaps. This is what
+  was built.
+
+**What decides.** Weighing a note by its length and the strength it was transcribed with
+follows whatever sounds longest (the pad in *Crossing*). Weighing by *standing* - the
+note's prominence in the sound against the most prominent note sounding with it, to the
+third power - follows what is heard first. The dense chords then need "the top of a chord
+leads" and *Crossing* needs the opposite; a reward for moving by step (a tune walks; a pad
+and a broken chord do not) settles both. Over three tone colours: 0.92 of the melodies in
+any octave, with 0.03 of moves being leaps. Plucked (decaying) tones remain weak: a long
+plucked note fades and the figure really is louder.
+
+**Whole chain, corpus** (`nmf`, `roles-arp`): melody 0.58 → 0.81; bass and harmony
+unchanged. Still lost: the round (*Frere Jacques*, 0.12 - which voice of a round is "the"
+melody?) and the strict score of *Octaves* (the chain takes the upper octave; 0.83 in any
+octave).
+
+**The recordings.** The orchestral lead now runs G2..D5 with 14 % far leaps (26 % before).
+Sound against sound the piece is about where it was (harmony 0.76 → 0.75, bass 0.81 →
+0.77, loudness 0.89, movement 0.44 → 0.42). The small loss in bass has a plain cause: the
+old lead, hopping through the registers, played some of the prominent low notes that one
+bass voice cannot carry. With the tune kept above C3 instead of G2 the line is cleaner
+still (7 % far leaps) and the bass likeness lower (0.72). Which floor is right is a
+question for ears; G2 is the default.
+
+**Tried and not kept: the bass chosen the same way.** The lowest note of each moment is
+often not the bass one hears, so the same search was run among the low notes. On the
+orchestral piece it found a convincing pedal line (G2, Eb2, Bb1, F2 held for bars) and
+harmony and bass likeness rose (0.80, 0.87), but loudness and movement fell (long notes do
+not move), the ambient piece got worse in every respect, and *Groove* lost bass (0.66 →
+0.53). Prominence built from overtones hears the deepest tones poorly, and with the
+notes' own strengths it was no steadier. Left out; the lowest-note bass stays.
+
+**A side effect kept.** Those long bass notes showed that a held note could not follow the
+loudness under it: one token says one ramp. Long notes are now cut where the loudness
+leaves the straight line (`writers/clio.py`, `_spans`). What is really wanted is a hold
+that changes level without striking again - a small addition to CLIo's notation, not
+made yet.
+
 ## 2026-11-14 - two real recordings, and a way to judge them
 
 **Set-up.** The author supplied two recordings of his own: an orchestral piece (57 s) and

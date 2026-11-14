@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import os
 
-from ..audio import RATE, analysis, decode
+from ..audio import RATE, analysis, decode, melody
 from ..audio.clean import clean as clean_notes
 from ..audio.effects import find_effects
 from ..audio.transcribe import DEFAULT, Spectrum, find_drums, transcribe
@@ -28,7 +28,8 @@ DRUM_PITCH = {"k": 36, "s": 38, "h": 42}        # General MIDI kick, snare, clos
 
 
 def read_audio(path, transcriber=DEFAULT, tempo=None, offset=None, meter=(4, 4), steps_per_beat=4,
-               rate=RATE, drums=True, voices=5, progress=None, quality="standard", clean="light", effects=True):
+               rate=RATE, drums=True, voices=5, progress=None, quality="standard", clean="light", effects=True,
+               tune=True):
     """Transcribe a sound file.
 
     ``tempo`` (bpm) and ``offset`` (seconds to the first beat) override the
@@ -39,16 +40,18 @@ def read_audio(path, transcriber=DEFAULT, tempo=None, offset=None, meter=(4, 4),
     ``quality`` trades time for detail (``fast``, ``standard``, ``fine``);
     ``clean`` says how hard to tidy the notes (``off``, ``light``, ``strict``);
     ``effects=False`` leaves risers, falls, swells and impacts unlooked for.
+    ``tune=False`` does not look for the tune with the whole piece in view
+    (``eigenchip/audio/melody.py``) and leaves it to the sorting into lines.
     """
     samples, rate, info = decode.load(path, rate)
     return score_from_samples(samples, rate, transcriber, tempo, offset, meter, steps_per_beat, info,
                               os.path.splitext(os.path.basename(path))[0], drums, voices, progress,
-                              quality, clean, effects)
+                              quality, clean, effects, tune)
 
 
 def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offset=None, meter=(4, 4),
                        steps_per_beat=4, info=None, title="", drums=True, voices=5, progress=None,
-                       quality="standard", clean="light", effects=True):
+                       quality="standard", clean="light", effects=True, tune=True):
     spec = Spectrum(samples, rate, progress=progress, quality=quality)
     hits = find_drums(spec) if drums else []            # first: the note cutter wants to know where the kicks are
     found = []
@@ -59,6 +62,10 @@ def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offs
         hits = [h for h in hits if not any(abs(h[0] - t) < 0.08 for t in booms)]       # the impact owns its own crack
     heard = transcribe(spec, transcriber, **({"restrike": 2.4} if clean == "strict" and transcriber != "pads" else {}))
     notes = clean_notes(heard, clean, found, hits)
+    leading = set()
+    if tune and voices and voices > 1 and transcriber != "mono":
+        spec.tell(0.85, "Following the tune")
+        leading = {id(notes[i]) for i in melody.find(spec, notes)}
     spec.tell(0.9, "Finding the beat")
     info = dict(info or {})
     info.update(source="audio", transcriber=transcriber, tempo_given=tempo is not None, quality=quality,
@@ -82,14 +89,17 @@ def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offs
     info.update(offset=round(phase, 4), grid_agreement=round(agreement, 2), drum_hits=len(hits))
     beat = 60.0 / bpm
     out = []
-    for t0, t1, pitch, strength in notes:
+    lead = []
+    for note in notes:
+        t0, t1, pitch, strength = note
         start = (t0 - phase) / beat
         end = (t1 - phase) / beat
         if end <= 0:
             continue
         start = max(0.0, start)
         vel = int(max(30, min(127, 40 + 87 * strength)))
-        out.append(Note(start, max(end - start, 1.0 / (steps_per_beat * 2)), pitch, vel, 0, 0))
+        (lead if id(note) in leading else out).append(
+            Note(start, max(end - start, 1.0 / (steps_per_beat * 2)), pitch, vel, 0, 0))
     for t, kind in hits:
         start = (t - phase) / beat
         if start > -0.5 / steps_per_beat:
@@ -132,7 +142,15 @@ def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offs
                        if e["end"] - phase > 0]
     score = Score(out, bpm, meter, title, {0: "transcription"}, info)
     if voices and voices > 1:
-        score = separate(score, int(voices))
+        if lead:                                            # the tune is line 0; the rest is sorted into the lines below it
+            rest = separate(score, max(1, int(voices) - 1))
+            moved = [Note(n.start, n.dur, n.pitch, n.vel, n.channel if n.drum else n.channel + 1, n.program, n.drum)
+                     for n in rest.notes]
+            names = {0: "tune"}
+            names.update({ch + 1: name for ch, name in rest.names.items()})
+            score = Score(lead + moved, bpm, meter, title, names, dict(rest.info, lead_channel=0))
+        else:
+            score = separate(score, int(voices))
         score.info["voices"] = len(score.channels())
     spec.tell(1.0, "Done listening")
     return score
