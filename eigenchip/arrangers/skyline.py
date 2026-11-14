@@ -11,7 +11,7 @@ Fails whenever accompaniment sits above the melody.
 from __future__ import annotations
 
 from ..ir import Arrangement
-from .common import line, map_drums, voice, without
+from .common import more_lines, line, map_drums, voice, without
 
 NAME = "skyline"
 SUMMARY = "Pitch only: top line, bottom line, then the top of the rest."
@@ -27,6 +27,5 @@ def arrange(grid, voices=3):
         rest = without(rest, used)
         out.append(voice("bass", bass))
     if voices >= 3:
-        inner, _used = line(rest, top=True)
-        out.append(voice("inner", inner))
+        out += more_lines(rest, voices - 2)[0]
     return Arrangement(out, map_drums(grid.drums), NAME)

@@ -393,11 +393,65 @@ class QualityCleaningAndEffectsTests(unittest.TestCase):
         self.assertEqual(grid.info["effects"], info["effects"])
         song = clio.to_song(arrange(grid, "roles", 3), grid)
         self.assertEqual(clio.validate(song), [])
-        self.assertIn("fx", song["instruments"])
-        self.assertEqual(song["instruments"]["fx"], clio.FX_INSTRUMENTS["fx"])
-        self.assertTrue(any("fx" in tracks for tracks in song["patterns"].values()))
+        self.assertEqual(song["instruments"]["fx"], clio.FX_SLIDING["fx"])
+        self.assertIn("2.1", song["needs"])
+        fx = " ".join(tracks.get("fx", "") for tracks in song["patterns"].values())
+        self.assertRegex(fx, r"[a-g]#?\d>[a-g]#?\d@\d>\d:\d+")         # one note that slides and grows
+        plain = clio.to_song(arrange(grid, "roles", 3), grid, expression="plain")
+        self.assertEqual(clio.validate(plain), [])
+        self.assertEqual(plain["instruments"]["fx"], clio.FX_INSTRUMENTS["fx"])
+        self.assertNotIn("needs", plain)                            # the chip as it was: CLIo 2.0 plays it
+        for tracks in plain["patterns"].values():
+            for text in tracks.values():
+                self.assertNotRegex(text, "[@>]")
         bare = clio.to_song(arrange(grid, "roles", 3), grid, effects=False)
         self.assertNotIn("fx", bare["instruments"])
+        with self.assertRaisesRegex(ValueError, "full, plain"):
+            clio.to_song(arrange(grid, "roles", 3), grid, expression="loud")
+
+    def test_loudness_and_lasting_noise_are_measured(self):
+        from eigenchip.readers.audio import score_from_samples
+        drone = piece("deep_drone")
+        tones = synth.render(drone, "pad")
+        calm = score_from_samples(tones, transcriber="pads", tempo=drone.tempo)
+        self.assertLess(calm.info["noise_share"], 0.03)
+        self.assertNotIn("texture", calm.info)
+        self.assertEqual(calm.info["loudness_per_beat"], 4)
+        self.assertTrue(all(0.0 <= v <= 1.0 for v in calm.info["loudness"]))
+        self.assertLess(score_from_samples(synth.render(piece("groove"), "band")).info["noise_share"], 0.03)   # hats are the kit's
+        rng = np.random.RandomState(3)                              # wind over the drone, rising
+        wind = rng.uniform(-1, 1, len(tones)).astype(np.float32) * np.linspace(0.04, 0.5, len(tones)).astype(np.float32)
+        windy = score_from_samples(tones + wind, transcriber="pads", tempo=drone.tempo)
+        self.assertGreater(windy.info["noise_share"], 0.1)
+        level = windy.info["texture"]["level"]
+        self.assertGreater(sum(level[-40:]), 2 * sum(level[:40]))   # and it is heard to rise
+        grid = quantize(windy)
+        song = clio.to_song(arrange(grid, "roles", 3), grid)
+        self.assertEqual(clio.validate(song), [])
+        self.assertEqual(song["instruments"]["bed"]["wave"], "noise")
+        bed = [tracks["bed"] for tracks in song["patterns"].values() if "bed" in tracks]
+        self.assertTrue(bed and any("@" in text for text in bed))
+        self.assertNotIn("bed", clio.to_song(arrange(grid, "roles", 3), grid, effects=False)["instruments"])
+        plain = clio.to_song(arrange(grid, "roles", 3), grid, expression="plain")
+        self.assertNotRegex(" ".join(t.get("bed", "") for t in plain["patterns"].values()), "[@>]")
+
+    def test_sound_against_sound(self):
+        from eigenchip.audio import compare
+        own, other = piece("twinkle"), piece("crossing")
+        a, b = synth.render(own, "band"), synth.render(other, "band")
+        same = compare.compare(a, a)
+        self.assertEqual([same[k] for k in compare.KEYS], [1.0, 1.0, 1.0, 1.0])
+        again = compare.compare(a, synth.render(own, "square"))     # another tone colour, the same music
+        self.assertGreater(again["harmony"], 0.85)
+        apart = compare.compare(a, b)
+        self.assertLess(apart["harmony"], 0.4)
+        self.assertLess(apart["bass"], 0.4)
+        late = np.concatenate((np.zeros(22050, dtype=np.float32), a))
+        self.assertGreater(compare.compare(late, a, lead=1.0)["harmony"], 0.95)
+        self.assertLess(compare.compare(late, a)["harmony"], 0.7)   # a second out of step
+        self.assertEqual(compare.compare(a, np.zeros(len(a), dtype=np.float32))["harmony"], 0.0)
+        with self.assertRaisesRegex(ValueError, "short"):
+            compare.compare(a[:4000], a[:4000])
 
     def test_effect_tracks(self):
         tracks = clio.effect_tracks([

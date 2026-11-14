@@ -67,6 +67,21 @@ def without(notes, used):
     return [n for n in notes if id(n) not in ids]
 
 
+MAX_VOICES = 6
+
+
+def more_lines(rest, count):
+    """Peel ``count`` further lines off the top of ``rest``: ``([Voice, ...], what is left)``."""
+    out = []
+    for i in range(max(0, count)):
+        events, used = line(rest, top=True)
+        if not events:
+            break
+        out.append(voice("inner", events, "inner" if i == 0 else "inner%d" % (i + 1)))
+        rest = without(rest, used)
+    return out, rest
+
+
 def voice(role, events, name=None):
     return Voice(name or role, role, events, INSTRUMENTS[role])
 

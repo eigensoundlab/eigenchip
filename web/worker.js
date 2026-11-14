@@ -46,7 +46,10 @@ def _call(name, payload, blob):
                                                   a.get("drums", True), a.get("truth"),
                                                   progress=_progress, **a.get("options", {})))
     if name == "arrange":
-        return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4)))
+        return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4),
+                                       expression=a.get("expression", "full")))
+    if name == "likeness":
+        return to_json(session.likeness)
     if name == "chip":
         return session.chip_wav(clio_synth)
     if name == "original":

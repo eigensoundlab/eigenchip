@@ -10,6 +10,7 @@
   "eigenchip/audio/__init__.py",
   "eigenchip/audio/analysis.py",
   "eigenchip/audio/clean.py",
+  "eigenchip/audio/compare.py",
   "eigenchip/audio/decode.py",
   "eigenchip/audio/effects.py",
   "eigenchip/audio/evaluate.py",

@@ -13,10 +13,11 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.5.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Status: early (0.6.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangement strategies and four transcription
 baselines, finds drums, sorts transcribed notes into lines, and describes risers, falls,
-swells and impacts apart from the notes; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
+swells and impacts apart from the notes, and follows the loudness and the lasting noise of a
+recording; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
 and scores every stage on a small corpus. Python 3.8+. The MIDI path has no dependencies;
 the audio path needs NumPy, and ffmpeg for anything but WAV.
 
@@ -35,6 +36,9 @@ synthesizer:
 ```
 python -m eigenchip render ode.json ode.wav --clio /path/to/CLIo
 ```
+
+A song whose notes carry levels or slides (anything converted from sound, usually) needs
+CLIo 2.1; `--expression plain` writes one that CLIo 2.0 plays.
 
 ### From a sound file
 
@@ -74,12 +78,20 @@ Around the transcriber:
   slide; a swell as one note with a slow attack; an impact as a low note that dies away.
   `--no-effects` turns this off.
 
-Two settings trade one thing for another:
+- **Loudness and noise.** The level of the sound is measured at every step, and so is the
+  part of it that is lasting noise - wind, rumble, a cymbal wash - with its brightness.
+  The song's notes follow the first; a noise track follows the second when noise is
+  more than a twelfth of the energy.
+
+Settings that trade one thing for another:
 
 | Setting | Choices | What you trade |
 | --- | --- | --- |
 | `--quality` | `fast`, `standard`, `fine` | Time for detail. On the corpus `fast` takes about half the time and loses two points of F1; `fine` takes about three times as long and gains one. `fine` mostly buys precision. |
 | `--clean` | `off`, `light`, `strict` | Stray notes for real ones. `light` removes only what is very likely a mistake: scraps of a held note, a faint copy a semitone beside a note, short faint notes on a drum hit, the staircase a sweep leaves behind. `strict` also removes faint short notes and allows six notes at once: with drums, precision rises from 0.60 to 0.71 and recall falls from 0.85 to 0.74. |
+
+| `--voices` | 1 to 6 | The sound of a chip for more of the music. Three pitched voices is what a classic sound chip has; a fourth and fifth keep inner lines that three must drop. On an orchestral recording five voices raised the likeness of the bass from 0.70 to 0.81. |
+| `--expression` | `full`, `plain` | Movement for compatibility. `full` writes a level on the notes, lets sweeps slide and swells swell; such a song needs CLIo 2.1. `plain` is the chip as it was - one level, a sweep as a staircase of short notes - and plays on CLIo 2.0. The staircase is also a sound of its own; choose it when you want it. |
 
 These are plain, readable baselines, not the state of the art. Instruments are not
 recognised, the meter is assumed, and the effect detector was fitted to clean synthetic
@@ -94,7 +106,9 @@ it draws the notes it found against the voices the chip plays, lets you switch b
 the original and the chip version while it plays, scores every arranger, and offers the
 CLIo song, the transcription and the chip sound for download. For sound files you choose
 how closely it listens and how hard it tidies the notes; sweeps, swells and impacts are
-drawn on the roll as slanted lines, wedges and strokes. Nothing is uploaded: the
+drawn on the roll as slanted lines, wedges and strokes. For a sound file it also compares
+the chip version with the original as sound - harmony, bass, loudness, movement - which
+is the one judgement that does not rest on what the transcriber heard. Nothing is uploaded: the
 analysis is done by Python compiled to WebAssembly ([Pyodide](https://pyodide.org)) on
 your own machine. That makes listening slow: transcribing a sound file takes about as
 long as the music lasts, where the command line needs a couple of seconds.
@@ -165,6 +179,14 @@ same corpus:
   shreds a swelling pad into fragments; on ordinary music it is useless by design.
 - Tempo is right on eight pieces of ten, doubled on one, and wrong on the drone piece,
   which has no pulse to find.
+- On real recordings (two of the author's, an orchestral and an ambient piece; no true
+  notes, so judged sound against sound, see [RESULTS-audio.md](RESULTS-audio.md) and
+  `experiments/listen.py`): following the loudness of the source is the largest single
+  gain (likeness of loudness 0.58 to 0.83 on the orchestral piece); five voices instead of
+  three keep more of the bass (0.70 to 0.81); a noise track gives the ambient piece its
+  movement back (0.11 to 0.33). Harmony hardly moves (0.73 to 0.76, and 0.64 unchanged):
+  what the transcriber hears is the limit, not what the chip can play. The effect
+  detector found nothing in either recording.
 - Effects wreck a transcription and can be taken out again. Laid over a piece, eight
   effects cut the precision of the notes roughly in half (0.90 to 0.40 on the drone, 0.59
   to 0.32 on a tune with drums), because a sweep is read as a spray of short notes. Found
@@ -230,9 +252,11 @@ experiment.
 - **Effects in real mixes**: the detector knows four clean gestures. Real risers are
   layered, filtered and drowned in reverb; sweeps in the bass are not seen at all; and an
   impact over a rhythm section is hard to tell from a kick and a bass note together.
-- **A target that can slide**: CLIo songs have no pitch slide or volume curve, so sweeps
-  become staircases. A slide in the song format would let effects be played as they are.
-- **Slowly changing timbre**: filter sweeps and evolving pads still have no description.
+- **Hearing more of a recording**: on real music the transcriber is what limits the
+  result. Quiet passages judged against themselves found more notes on an ambient piece
+  and more wrong ones on an orchestral one; that needs a better idea than a threshold.
+- **Slowly changing timbre**: filter sweeps and evolving pads still have no description
+  beyond a noise level and its brightness.
 - **Drums**: missed hits when a hat and a snare coincide; toms and cymbals; removing
   the drums from the sound before the pitched analysis instead of working around them.
 - **Harder audio**: recordings of real instruments, reverberation, detuning; a trained

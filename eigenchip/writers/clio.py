@@ -19,17 +19,52 @@ from ..arrangers.common import INSTRUMENTS
 from ..ir import pitch_name
 
 
-def _token(pitches, length):
+EXPRESSION = ("full", "plain")
+SOFTEN = True
+SOFT_BELOW = 2.0                # attacks a second: below this the notes get a slow attack and a long release
+
+
+def _token(pitches, length, mark=""):
     body = pitch_name(pitches[0]) if len(pitches) == 1 else "[%s]" % " ".join(pitch_name(p) for p in pitches)
-    return body if length == 1 else "%s:%d" % (body, length)
+    return body + mark if length == 1 else "%s%s:%d" % (body, mark, length)
+
+
+def _mark(levels, a, b, bend=None, key=None):
+    """What CLIo 2.1 can say about a note from step a to b: ``>target`` for a slide, ``@level`` or ``@from>to``.
+
+    ``levels`` is one level per step (measured from a sound) or a level per
+    note, looked up by ``key`` = (start, pitch) (the velocities of a MIDI file).
+    """
+    out = ""
+    if bend:
+        (p0, p1), (l0, l1) = bend
+        if int(round(p1)) != int(round(p0)):
+            out = ">" + pitch_name(int(round(p1)))
+        return out + ("@%d" % l0 if l0 == l1 else "@%d>%d" % (l0, l1))
+    if not levels:
+        return ""
+    if isinstance(levels, dict):
+        level = levels.get(key, 9)
+        return "" if level >= 9 else "@%d" % level
+    span = levels[a:b] or levels[-1:]
+    first, last = span[0], span[-1]
+    if b - a >= 4 and abs(last - first) >= 2:
+        return "@%d>%d" % (first, last)                     # long enough to hear it change
+    mean = int(round(sum(span) / float(len(span))))
+    return "" if mean >= 9 else "@%d" % max(1, mean)
 
 
 def _rest(length):
     return "." if length == 1 else ".:%d" % length
 
 
-def _track(events, start, length, bar):
-    """Notation for the events falling in ``[start, start + length)``."""
+def _track(events, start, length, bar, levels=None):
+    """Notation for the events falling in ``[start, start + length)``.
+
+    An event is ``(start, steps, pitches)``; a fourth item ``((pitch, pitch), (level, level))``
+    makes it a slide with a level of its own, and ``levels`` (one per step) marks
+    the others. Both need CLIo 2.1.
+    """
     tokens, pos = [], start
     end = start + length
 
@@ -53,13 +88,22 @@ def _track(events, start, length, bar):
             a = nxt
 
     sounded = False
-    for ev_start, ev_dur, pitches in events:
+    for event in events:
+        ev_start, ev_dur, pitches = event[:3]
         a, b = max(ev_start, start), min(ev_start + ev_dur, end)
         if a >= b:
             continue
         if a > pos:
             emit_rest(pos, a)
-        emit(lambda n, p=pitches: _token(p, n), a, b)
+        bend = None
+        if len(event) > 3 and event[3]:                     # cut at a pattern edge: take the part that is inside
+            (p0, p1), (l0, l1) = event[3]
+            f0, f1 = (a - ev_start) / float(ev_dur), (b - ev_start) / float(ev_dur)
+            bend = ((p0 + (p1 - p0) * f0, p0 + (p1 - p0) * f1),
+                    (int(round(l0 + (l1 - l0) * f0)), int(round(l0 + (l1 - l0) * f1))))
+            pitches = [int(round(bend[0][0]))]
+        mark = _mark(levels, a, b, bend, (ev_start, pitches[0]))
+        emit(lambda n, p=pitches, m=mark: _token(p, n, m), a, b)
         sounded = True
         pos = b
     if pos < end:
@@ -67,14 +111,15 @@ def _track(events, start, length, bar):
     return " ".join(tokens), sounded
 
 
-def _drum_track(drums, start, length, bar):
+def _drum_track(drums, start, length, bar, levels=None):
     by_step = {s: hits for s, hits in drums if start <= s < start + length}
     tokens = []
     for s in range(start, start + length):
         if s != start and s % bar == 0:
             tokens.append("|")
         hits = by_step.get(s)
-        tokens.append("." if not hits else hits[0] if len(hits) == 1 else "[%s]" % " ".join(hits))
+        mark = _mark(levels, s, s + 1) if hits and isinstance(levels, list) else ""
+        tokens.append("." if not hits else (hits[0] if len(hits) == 1 else "[%s]" % " ".join(hits)) + mark)
     return " ".join(tokens), bool(by_step)
 
 
@@ -93,6 +138,103 @@ FX_INSTRUMENTS = {
     "boom": {"wave": "triangle", "attack": 0.002, "decay": 1.2, "sustain": 0.0, "release": 0.2, "gate": 1.0,
              "volume": 0.7},
 }
+
+
+# With slides and levels (CLIo 2.1) the same sounds need no tricks: the note itself moves.
+FX_SLIDING = {
+    "fx": {"wave": "saw", "attack": 0.01, "decay": 0.05, "sustain": 0.9, "release": 0.05, "gate": 1.0,
+           "volume": 0.2},
+    "air": {"wave": "noise", "attack": 0.01, "decay": 0.05, "sustain": 0.9, "release": 0.05, "gate": 1.0,
+            "volume": 0.22},
+    "swell": {"wave": "soft", "attack": 0.01, "decay": 0.05, "sustain": 1.0, "release": 0.02, "gate": 1.0,
+              "volume": 0.3},
+    "hiss": {"wave": "noise", "attack": 0.01, "decay": 0.05, "sustain": 1.0, "release": 0.02, "gate": 1.0,
+             "volume": 0.3},
+    "boom": dict(FX_INSTRUMENTS["boom"]),
+}
+
+
+def effect_slides(effects, steps_per_beat):
+    """The same effects as single notes that slide and swell (CLIo 2.1): ``{track: events}``."""
+    out = {}
+    for e in sorted(effects or [], key=lambda e: e["start"]):
+        a = int(round(e["start"] * steps_per_beat))
+        b = max(a + 1, int(round(e["end"] * steps_per_beat)))
+        kind, noisy = e["kind"], bool(e.get("noise"))
+        top = int(min(9, max(5, round(9 * float(e.get("strength", 1.0))))))
+        clip = lambda p: min(108.0, max(24.0, float(p)))    # noqa: E731
+        if kind == "riser":
+            track, bend = ("air" if noisy else "fx"), ((clip(e["low"]), clip(e["high"])), (max(1, top // 4), top))
+        elif kind == "fall":
+            track, bend = ("air" if noisy else "fx"), ((clip(e["high"]), clip(e["low"])), (top, max(1, top // 4)))
+        elif kind == "swell":
+            track, bend = ("hiss" if noisy else "swell"), ((clip(e["low"]), clip(e["low"])), (1, top))
+        elif kind == "impact":
+            track, bend, b = "boom", ((33.0, 33.0), (top, top)), max(b, a + 2 * steps_per_beat)
+        else:
+            continue
+        events = out.setdefault(track, [])
+        if events and events[-1][0] + events[-1][1] > a:    # two at once on one track: the later one waits
+            a = events[-1][0] + events[-1][1]
+        if b > a:
+            events.append((a, b - a, [int(round(bend[0][0]))], bend))
+    return out
+
+
+BED_LOWEST = 24.0
+BED = {"wave": "noise", "attack": 0.03, "decay": 0.05, "sustain": 1.0, "release": 0.06, "gate": 1.0, "volume": 0.25}
+
+
+def texture_events(texture, per, total, full=True):
+    """A noise bed from the lasting noise of the source: ``[(start, steps, [pitch], bend), ...]``.
+
+    ``texture`` holds a level (0 to 1) and a brightness (as a MIDI pitch) per
+    step of the reader; ``per`` is reader steps per song step. With ``full``
+    each note slides and swells to follow them; without, it is a plain note
+    wherever the noise is strong.
+    """
+    if not texture:
+        return []
+    def at(i):
+        j = min(len(texture["level"]) - 1, int(i * per))
+        level = int(min(9, round(9 * texture["level"][j])))
+        # the chip's noise at note p has its centre near 0.78 p + 30 (measured), so ask for the note that fits
+        return level, min(96.0, max(BED_LOWEST, (texture["pitch"][j] - 30.0) / 0.78))
+    floor = 1 if full else 3
+    out, i = [], 0
+    while i < total:
+        level, pitch = at(i)
+        if level < floor:
+            i += 1
+            continue
+        j = i + 1
+        while j < total and j - i < (8 if full else 4) and at(j)[0] >= floor:
+            j += 1
+        last_level, last_pitch = at(j - 1)
+        out.append((i, j - i, [int(round(pitch))], ((pitch, last_pitch), (level, last_level)) if full else None))
+        i = j
+    return out
+
+
+def step_levels(grid, total):
+    """How loud the source is, from 1 to 9 - or None when it never changes.
+
+    A transcription carries a loudness curve measured from the sound: the
+    answer is a level per step.  A MIDI file has only the velocities of its
+    notes: the answer is a level per note, ``{(start, pitch): level}``, each
+    against the loudest note of its own channel - the balance between the parts
+    is the instruments' business, the rise and fall within a part is the notes'.
+    """
+    curve = grid.info.get("loudness")
+    if curve:
+        per = float(grid.info.get("loudness_per_beat", grid.steps_per_beat)) / grid.steps_per_beat
+        levels = [int(min(9, max(1, round(9 * curve[min(len(curve) - 1, int(i * per))])))) for i in range(total)]
+        return levels if any(v < 9 for v in levels) else None
+    top = {}
+    for n in grid.pitched:
+        top[n.channel] = max(top.get(n.channel, 1), n.vel)
+    levels = {(n.start, n.pitch): int(min(9, max(1, round(9.0 * n.vel / top[n.channel])))) for n in grid.pitched}
+    return levels if any(v < 9 for v in levels.values()) else None
 
 
 def effect_tracks(effects, steps_per_beat):
@@ -134,20 +276,36 @@ def _label(i):
     return letters[i] if i < 26 else "%s%d" % (letters[i % 26], i // 26 + 1)
 
 
-def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True):
+def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, expression="full"):
     """Arrangement -> CLIo song dict.
 
     With ``effects``, the risers, falls, swells and impacts the audio reader
     found (``grid.info["effects"]``) are written on tracks of their own, beside
     the voices of the arrangement.
+
+    ``expression`` says how much of the source's movement the song carries:
+
+    ``full``   notes follow the loudness of the source, sweeps slide and swells
+               swell. Needs CLIo 2.1; the song says so in ``"needs"``.
+    ``plain``  every note at one level, a sweep as a staircase of short notes.
+               The sound of the chip as it was, and playable by CLIo 2.0.
     """
+    if expression not in EXPRESSION:
+        raise ValueError("Unknown expression '%s'. Choose from: %s" % (expression, ", ".join(EXPRESSION)))
+    full = expression == "full"
     bar = grid.steps_per_bar
     plen = bar * max(1, bars_per_pattern)
-    extra = effect_tracks(grid.info.get("effects"), grid.steps_per_beat) if effects else {}
+    found = grid.info.get("effects") if effects else None
+    extra = (effect_slides if full else effect_tracks)(found, grid.steps_per_beat)
     total = max([e[0] + e[1] for v in arrangement.voices for e in v.events]
                 + [e[0] + e[1] for events in extra.values() for e in events]
                 + [s + 1 for s, _h in arrangement.drums] + [1])
     total = ((total + bar - 1) // bar) * bar                    # whole bars
+    levels = step_levels(grid, total) if full else None
+    bed = texture_events(grid.info.get("texture"), float(grid.info.get("loudness_per_beat", grid.steps_per_beat))
+                         / grid.steps_per_beat, total, full) if effects else []
+    if bed:
+        extra = dict(extra, bed=bed)
     names = {}
     used = {}
     for v in arrangement.voices:                                # unique, stable track names
@@ -159,11 +317,11 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True):
         length = min(plen, total - start)
         tracks = {}
         for v in arrangement.voices:
-            text, sounded = _track(v.events, start, length, bar)
+            text, sounded = _track(v.events, start, length, bar, levels)
             if sounded:
                 tracks[names[id(v)]] = text
         if arrangement.drums:
-            text, sounded = _drum_track(arrangement.drums, start, length, bar)
+            text, sounded = _drum_track(arrangement.drums, start, length, bar, levels)
             if sounded:
                 tracks["kit"] = text
         for name in sorted(extra):
@@ -181,9 +339,16 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True):
     instruments = {names[id(v)]: dict(v.instrument or INSTRUMENTS.get(v.role, {})) for v in arrangement.voices}
     if arrangement.drums:
         instruments["kit"] = dict(INSTRUMENTS["kit"])
+    if SOFTEN and grid.info.get("attacks_per_second", 99.0) < SOFT_BELOW:
+        for inst in instruments.values():                       # slow music: no hard edges on the notes
+            if inst.get("wave") != "drums":
+                inst.update(attack=max(inst.get("attack", 0.0), 0.08), release=max(inst.get("release", 0.0), 0.3))
     for name in sorted(extra):
-        instruments[name] = dict(FX_INSTRUMENTS[name])
-    return {
+        instruments[name] = dict(BED if name == "bed" else (FX_SLIDING if full else FX_INSTRUMENTS)[name])
+    if "bed" in instruments and not full:
+        instruments["bed"]["volume"] = 0.15                     # no levels to follow: keep it in the background
+    moving = full and (levels is not None or bool(extra))
+    return dict(([("needs", "CLIo 2.1 (slides and levels)")] if moving else []), **{
         "title": title or grid.title or "untitled",
         "source": "eigenchip/%s" % (arrangement.name or "?"),
         "tempo": int(round(grid.tempo)),
@@ -193,7 +358,7 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True):
         "instruments": instruments,
         "patterns": patterns,
         "sequence": sequence,
-    }
+    })
 
 
 def track_length(text):

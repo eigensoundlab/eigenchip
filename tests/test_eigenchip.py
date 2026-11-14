@@ -163,6 +163,75 @@ class WriterTests(unittest.TestCase):
         self.assertEqual(len(song["patterns"]), 1)
 
 
+class MoreVoicesAndExpressionTests(unittest.TestCase):
+    def test_four_to_six_voices(self):
+        grid = grid_of("dense_chords")
+        for name in ARRANGERS:
+            kept = []
+            for voices in (3, 4, 6):
+                arr = arrange(grid, name, voices)
+                self.assertLessEqual(len(arr.voices), voices)
+                song = clio.to_song(arr, grid)
+                self.assertEqual(clio.validate(song), [])
+                self.assertEqual(len(song["instruments"]), len(set(song["instruments"])))
+                for v in arr.voices:                                # still lines a chip channel can play
+                    for (s0, d0, _p0), (s1, _d1, _p1) in zip(v.events, v.events[1:]):
+                        self.assertLessEqual(s0 + d0, s1)
+                kept.append(metrics.evaluate(grid, arr, song)["pitch_recall"])
+            self.assertGreaterEqual(kept[1], kept[0], name)
+            self.assertGreaterEqual(kept[2], kept[1], name)
+        six = arrange(grid, "roles", 6)
+        self.assertEqual([v.name for v in six.voices][:4], ["lead", "bass", "inner", "inner2"])
+        self.assertGreater(metrics.evaluate(grid, six)["pitch_recall"],
+                           metrics.evaluate(grid, arrange(grid, "roles", 3))["pitch_recall"] + 0.15)
+        self.assertEqual(arrange(grid, "roles-arp", 5).voices[-1].role, "chords")      # the chords take what is left
+        self.assertLess(len(arrange(grid_of("twinkle"), "skyline", 6).voices), 4)      # no more lines than there are
+
+    def test_levels_follow_the_source(self):
+        loud = Score([Note(i, 1, 60 + i, 20 + 15 * i, 0) for i in range(8)], 120)      # a crescendo
+        grid = quantize(loud)
+        arr = arrange(grid, "skyline", 1)
+        song = clio.to_song(arr, grid)
+        text = " ".join(t["lead"] for t in song["patterns"].values())
+        marks = [int(tok.split("@")[1].split(":")[0]) for tok in text.split() if "@" in tok]
+        self.assertEqual(marks, sorted(marks))
+        self.assertTrue(marks[0] <= 2 and len(marks) >= 6, text)
+        self.assertNotIn("@", text.split()[-1])                     # the loudest note is simply full
+        self.assertIn("needs", song)
+        plain = clio.to_song(arr, grid, expression="plain")
+        self.assertNotIn("@", json.dumps(plain["patterns"]))
+        self.assertNotIn("needs", plain)
+        even = clio.to_song(arrange(grid_of("waltz"), "roles", 3), grid_of("waltz"))  # one velocity: nothing to say
+        self.assertNotIn("@", json.dumps(even["patterns"]))
+        self.assertNotIn("needs", even)
+        self.assertEqual(even, clio.to_song(arrange(grid_of("waltz"), "roles", 3), grid_of("waltz"), expression="plain"))
+
+    def test_slides_survive_a_pattern_edge(self):
+        tracks = clio.effect_slides([{"kind": "riser", "start": 2.0, "end": 6.0, "low": 48.0, "high": 72.0,
+                                      "noise": False, "strength": 1.0},
+                                     {"kind": "swell", "start": 6.0, "end": 8.0, "low": 60.2, "high": 60.2, "noise": True},
+                                     {"kind": "impact", "start": 8.0, "end": 8.2, "low": 33.0, "high": 33.0}], 4)
+        self.assertEqual(sorted(tracks), ["boom", "fx", "hiss"])
+        (start, steps, pitches, bend), = tracks["fx"]
+        self.assertEqual((start, steps, pitches, bend), (8, 16, [48], ((48.0, 72.0), (2, 9))))
+        first, _ = clio._track(tracks["fx"], 0, 16, 16)             # the pattern ends half way up
+        second, _ = clio._track(tracks["fx"], 16, 16, 16)
+        self.assertEqual(first, ".:8 c3>c4@2>6:8")
+        self.assertEqual(second, "c4>c5@6>9:8 .:8")
+        self.assertEqual(clio._track(tracks["hiss"], 16, 16, 16)[0], ".:8 c4@1>9:8")
+        self.assertEqual(clio.track_length(first), 16)
+
+    def test_noise_bed(self):
+        texture = {"level": [0.0, 0.0, 0.3, 0.5, 0.7, 0.9, 0.9, 0.1, 0.0, 0.0], "pitch": [60.0] * 5 + [80.0] * 5}
+        full = clio.texture_events(texture, 1.0, 10)
+        self.assertEqual([(s0, d) for s0, d, _p, _b in full], [(2, 6)])
+        (p0, p1), (l0, l1) = full[0][3]
+        self.assertTrue(p1 > p0 and (l0, l1) == (3, 1))
+        plain = clio.texture_events(texture, 1.0, 10, full=False)
+        self.assertEqual([(s0, d, b) for s0, d, _p, b in plain], [(2, 4, None), (6, 1, None)])
+        self.assertEqual(clio.texture_events(None, 1.0, 10), [])
+
+
 class MetricTests(unittest.TestCase):
     def test_a_perfect_copy_scores_one(self):
         from eigenchip.ir import Arrangement, Voice

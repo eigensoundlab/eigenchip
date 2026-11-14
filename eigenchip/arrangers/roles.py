@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from ..ir import Arrangement
 from . import skyline
-from .common import channel_stats, line, map_drums, voice, without
+from .common import channel_stats, line, map_drums, more_lines, voice, without
 
 NAME = "roles"
 SUMMARY = "Guess melody and bass channels from statistics; top line of the rest."
@@ -75,6 +75,5 @@ def arrange(grid, voices=3):
     if voices >= 2:
         out.append(voice("bass", bass))
     if voices >= 3:
-        inner, _used = line(rest, top=True)
-        out.append(voice("inner", inner))
+        out += more_lines(rest, voices - 2)[0]
     return Arrangement(out, map_drums(grid.drums), NAME, remarks)

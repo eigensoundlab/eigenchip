@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from ..ir import Arrangement
 from . import roles
-from .common import chord_voice, line, map_drums, voice, without
+from .common import chord_voice, line, map_drums, more_lines, voice, without
 
 NAME = "roles-arp"
 SUMMARY = "Melody and bass by role; the rest as one arpeggiated chord per half bar."
@@ -34,6 +34,8 @@ def arrange(grid, voices=3):
     out = [voice("lead", lead)]
     if voices >= 2:
         out.append(voice("bass", bass))
-    if voices >= 3:
+    if voices >= 3:                         # beyond three, further lines come first and the chords take the rest
+        lines, rest = more_lines(rest, voices - 3)
+        out += lines
         out.append(voice("chords", chord_voice(rest, grid)))
     return Arrangement(out, map_drums(grid.drums), NAME, remarks)

@@ -24,7 +24,7 @@ sys.path.insert(0, ROOT)
 
 from eigenchip import __version__, metrics                      # noqa: E402
 from eigenchip.arrangers import arrange                         # noqa: E402
-from eigenchip.audio import analysis, decode, evaluate, synth   # noqa: E402
+from eigenchip.audio import analysis, compare, decode, evaluate, synth   # noqa: E402
 from eigenchip.audio.clean import MODES, clean                 # noqa: E402
 from eigenchip.audio.effects import find_effects               # noqa: E402
 from eigenchip.audio.transcribe import QUALITY, TRANSCRIBERS, Spectrum, find_drums, transcribe   # noqa: E402
@@ -78,7 +78,7 @@ def run(log=None):
         manifest = json.load(f)
     out = {"manifest": manifest, "notes": [], "drums": [], "tempo": [], "chain": [], "codecs": [],
            "kit": [], "voices": [], "deep": [], "quality": [], "clean": [], "effects": [], "false": [],
-           "debris": []}
+           "debris": [], "likeness": []}
     kinds = {35: "k", 36: "k", 37: "s", 38: "s", 39: "s", 40: "s"}
     ffmpeg = decode.ffmpeg_path()
     for entry in manifest:
@@ -219,6 +219,26 @@ def run(log=None):
                 row.update(scene=label, setting=setting)
                 out["debris"].append(row)
         say("  effects %s" % label)
+    # sound against sound: does the comparison tell a piece's own chip version from another piece's?
+    import importlib.util
+    import numpy as np
+    from eigenchip.writers import clio
+    found = importlib.util.spec_from_file_location("clio_synth", os.path.join(ROOT, "web", "vendor", "clio", "clio_synth.py"))
+    chip_synth = importlib.util.module_from_spec(found)
+    found.loader.exec_module(chip_synth)
+    played, chips = {}, {}
+    for e in manifest:
+        score = by_file[e["file"]]
+        grid = quantize(score)
+        played[e["file"]] = synth.render(score, "band")
+        chips[e["file"]] = np.asarray(chip_synth.render_song(clio.to_song(arrange(grid, "roles-arp"), grid)),
+                                      dtype=np.float32)
+    names = [e["file"] for e in manifest]
+    for i, e in enumerate(manifest):
+        own = compare.compare(played[e["file"]], chips[e["file"]])
+        other = compare.compare(played[e["file"]], chips[names[(i + 1) % len(names)]])
+        out["likeness"].append({"piece": e["title"], "own": own, "other": other})
+    say("  sound against sound")
     return out
 
 
@@ -343,6 +363,27 @@ def report(out):
     for r in out["debris"]:
         lines.append("| %s | %s | %s | %s | %s |" % (r["scene"], r["setting"], cell(r["precision"]),
                                                     cell(r["recall"]), cell(r["f1"])))
+    lines += ["", "## Sound against sound", "",
+              "For a recording there are no true notes, so `eigenchip.audio.compare` compares the chip",
+              "version with the original as sound: which pitch classes sound (harmony), the same below",
+              "E3 (bass), how the level rises and falls (loudness), and where attacks fall and how the",
+              "centre of the sound moves (movement). Each is a correlation from 0 to 1. To see whether",
+              "that means anything, every corpus piece played by the reference synthesizer is compared",
+              "with its own chip version (made from the MIDI file) and with the chip version of the",
+              "next piece.", "",
+              "| piece | harmony | bass | loudness | movement | another piece: harmony | bass | loudness | movement |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    for r in out["likeness"]:
+        lines.append("| %s | %s | %s |" % (r["piece"], " | ".join(cell(r["own"][k]) for k in compare.KEYS),
+                                           " | ".join(cell(r["other"][k]) for k in compare.KEYS)))
+    lines.append("| **average** | %s | %s |" % (
+        " | ".join(cell(sum(r["own"][k] for r in out["likeness"]) / len(out["likeness"])) for k in compare.KEYS),
+        " | ".join(cell(sum(r["other"][k] for r in out["likeness"]) / len(out["likeness"])) for k in compare.KEYS)))
+    lines += ["", "Harmony separates the right piece from a wrong one clearly. Bass does on average, but not",
+              "where a piece has little below E3 (the prelude). Loudness and movement are near zero for a",
+              "wrong piece and uneven for the right one, because most of these pieces are played at one",
+              "level; they matter for recordings. `python experiments/listen.py your.wav` prints the same",
+              "four figures for recordings of your own under several settings."]
     if out["codecs"]:
         lines += ["", "## Lossy formats", "",
                   "The `band` audio compressed, decoded again through ffmpeg, and transcribed with `nmf`.", "",

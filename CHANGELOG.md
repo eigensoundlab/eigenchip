@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.0 - 2026-11-14
+
+The first release shaped by real recordings: dynamics, more voices, a noise track, slides.
+
+- **Sound against sound.** `eigenchip.audio.compare` compares a chip version with its
+  original as sound - harmony, bass, loudness, movement - so a conversion of a recording
+  can be judged without knowing its notes. The workbench shows it for every sound file;
+  `python experiments/listen.py your.wav` prints it for several settings.
+- **Expression.** `--expression full | plain` (and a choice on the page). `full`, the
+  default, writes a level on every note from the loudness of the source, lets sweeps
+  slide and swells swell. That uses the slide and level notation of CLIo 2.1, and the
+  song says so in `"needs"`. `plain` is the chip as it was - one level, sweeps as
+  staircases - and plays on CLIo 2.0. A MIDI file's levels come from its velocities,
+  each part against its own loudest note; a file with one velocity converts as before.
+- **More voices.** `--voices` goes up to 6. Beyond lead and bass, further lines are taken
+  from the top of what is left; `roles-arp` gives the chords what remains after them.
+- **A noise track.** The audio reader measures how much of the sound is lasting noise
+  (wind, rumble, wash) and how bright it is; when that is more than a twelfth of the
+  energy the song gets a `bed` track on the noise wave that follows it. Runs of hi-hats
+  are left to the drum track.
+- **Softer edges for slow music.** With fewer than two attacks a second, the chip
+  instruments get a slow attack and a long release.
+- The workbench plays songs with CLIo's synthesizer as it will be in 2.1.
+- `cut_notes(..., quiet=...)`: an optional threshold that follows the music. Off by
+  default; see the research log for why.
+
+Measured on two recordings (an orchestral and an ambient piece), sound against sound:
+loudness 0.58 to 0.88 and bass 0.70 to 0.81 on the first with five voices; movement 0.11
+to 0.33 on the second. Harmony 0.73 to 0.76 and 0.64 unchanged: the transcriber is the
+limit. The effect detector found nothing in either.
+
 ## 0.5.0 - 2026-11-14
 
 A choice of how closely to listen, a tidier transcription, and the sounds that are not notes.

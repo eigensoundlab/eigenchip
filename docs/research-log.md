@@ -3,6 +3,65 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-14 - two real recordings, and a way to judge them
+
+**Set-up.** The author supplied two recordings of his own: an orchestral piece (57 s) and
+an ambient one (38 s). They are not in the repository. Neither has known notes, so the
+note scores cannot be computed, and "judged against what was heard" hides every mistake
+of the transcriber. A sound-against-sound comparison was built instead
+(`eigenchip/audio/compare.py`): per quarter second, the correlation of the twelve pitch
+classes (harmony), of the pitch classes below E3 (bass), of the level (loudness), and of
+attack strength and spectral centre (movement). Harmony is weighted by how much tone - not
+noise - the original has at that moment; where the chip version is silent it counts as
+no likeness. Numbers by `experiments/listen.py`.
+
+**Does the comparison mean anything?** On the corpus, a piece played by the reference
+synthesizer against its own chip version scores 0.76-0.99 on harmony (0.89 on average);
+against the chip version of another piece 0.00-0.20 (0.09). Loudness and movement are near chance for a wrong
+piece too, but they are also low for the right one when the piece has one level
+throughout. Table in `RESULTS-audio.md`.
+
+**What the recordings looked like to 0.5.0.** Energy mostly between 55 and 110 Hz. About
+one attack a second. Tempo found with confidence 0.2 and notes that do not sit on its
+grid. 365 notes heard in one, 40 in the other, with seven seconds of loud rumble at the
+start of the ambient piece in which no note was found at all. No effects reported.
+
+**What helped** (as 0.5.0 -> now; orchestral, then ambient):
+
+1. *Following the loudness.* A level from 1 to 9 on every note, from the level of the
+   sound at that step. Loudness 0.58 -> 0.83 and 0.68 -> 0.77 at three voices. This needed
+   a level in the song notation, which CLIo 2.0 does not have.
+2. *More voices.* Five instead of three: bass 0.70 -> 0.81, harmony 0.73 -> 0.76 on the
+   orchestral piece. The ambient piece has no more than four lines to give.
+3. *A noise track.* Noise is measured as the level of the quieter bins in each
+   third-octave band: tones are a few tall bins, noise fills all of them. What lasts a
+   third of a second counts, and stretches around drum hits do not. On the ambient piece
+   9 % of the energy is such noise; a track on the noise wave that follows its level and
+   brightness brings movement from 0.11 to 0.33 (the correlation of the spectral centre
+   from 0.2 to 0.6). On the orchestral piece (5 %) it changes nothing and is not written.
+4. *Softer note edges* for slow music: about two points of harmony.
+
+**What did not.**
+
+- *The slow reading (`pads`)* was worse than `nmf` on harmony for both recordings (0.67
+  against 0.76, 0.61 against 0.64), although both are slow. It stays a choice, not a
+  default for slow material.
+- *A threshold that follows the music*, so that quiet passages are judged against
+  themselves: on the ambient piece harmony 0.64 -> 0.68 and the centre correlation 0.61 ->
+  0.88; on the orchestral piece harmony 0.76 -> 0.69 and bass 0.81 -> 0.70; on the corpus
+  a point of precision lost. It finds real quiet notes and invents others. Left in as
+  `cut_notes(quiet=...)`, off.
+- *The effect detector* reported nothing on either recording. Whether there are risers
+  in them that it missed cannot be told from here; by ear it is for the author to say.
+
+**Where that leaves it.** Loudness, bass and movement are now mostly there. Harmony is
+not: 0.76 and 0.64, against 0.89 on average when the notes are known. What the transcriber
+hears in a dense, reverberant recording is the limit, not what the chip can play.
+
+**Caveat.** Two recordings, both by one author, and the settings were chosen while
+looking at them. The comparison itself is new and has only been checked against the
+synthetic corpus.
+
 ## 2026-11-14 - a quality setting, cleaning, and the sounds that are not notes
 
 **Set-up.** Three presets for the spectrogram (step 46 / 23 / 12 ms; 3 / 3 / 4 bins per

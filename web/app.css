@@ -114,6 +114,8 @@ body.dragging .bench { outline: 3px dashed var(--focus); outline-offset: -6px; }
 .facts b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .downloads { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .against { margin: 0 0 0.5rem; color: var(--ink-2); }
+.likeness { margin: 0.8rem 0 0; color: var(--ink-2); }
+.likeness b { color: var(--ink); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { padding: 0.42rem 0.45rem; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }

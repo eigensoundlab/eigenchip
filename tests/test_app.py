@@ -142,6 +142,42 @@ class SessionTests(unittest.TestCase):
                          quality="fast", effects=False)
         self.assertEqual(json.loads(to_json(quiet.arrange("roles", 3)))["effects"], [])
 
+    @unittest.skipIf(np is None, "NumPy is not installed")
+    def test_likeness_expression_and_more_voices(self):
+        from eigenchip.audio import synth
+        score = read(os.path.join(ROOT, "corpus", "dense_chords.mid"))
+        session = Session()
+        session.open_audio(synth.render(score, "band"), title="Dense", tempo=score.tempo)
+        view = json.loads(to_json(session.arrange("roles", 5)))
+        self.assertEqual((len(view["voices"]), view["expression"]), (5, "full"))
+        self.assertIsNone(session.likeness)                         # nothing to compare until there is a chip sound
+        cs = clio_synth()
+        session.chip_wav(cs)
+        like = json.loads(to_json(session.likeness))
+        self.assertGreater(like["harmony"], 0.7)
+        self.assertEqual(sorted(like), ["bass", "harmony", "loudness", "movement", "seconds"])
+        three = json.loads(to_json(session.arrange("roles", 3, expression="plain")))
+        self.assertIsNone(three["needs"])
+        session.chip_wav(cs)
+        self.assertLess(session.likeness["harmony"], like["harmony"] + 0.05)
+        # every note the writer can produce is one the synthesizer understands
+        for view_song in (session.song, json.loads(view["song_json"])):
+            for tracks in view_song["patterns"].values():
+                for name, text in tracks.items():
+                    if view_song["instruments"][name].get("wave") == "drums":
+                        continue
+                    for _start, _steps, notes in cs.parse_track(text)[0]:
+                        for note in notes:
+                            pitch, target, a, b = cs.split_note(note)
+                            self.assertGreater(cs.note_freq(pitch), 0, note)
+                            self.assertTrue(target is None or cs.note_freq(target) > 0, note)
+                            self.assertTrue(0 <= a <= 1 and 0 <= b <= 1, note)
+        midi = Session()
+        midi.open_midi(corpus_bytes("waltz"))
+        midi.arrange("roles", 3)
+        midi.chip_wav(cs)
+        self.assertIsNone(midi.likeness)                            # a MIDI file has no sound of its own to compare
+
     def test_midi_can_be_heard_on_the_test_synth(self):
         s = Session()
         s.open_midi(corpus_bytes("twinkle"))

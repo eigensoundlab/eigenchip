@@ -86,6 +86,27 @@ def onset_strength(x, rate=RATE, n_fft=1024, hop=256):
     return flux_of(stft(x, n_fft, hop, rate=rate)), rate / float(hop)
 
 
+def noise_floor(np, mag, bin_hz, edges, share=0.3):
+    """How much of each band is noise: ``[frames, bands]`` amplitudes.
+
+    Tones are a few tall bins with nothing between them; noise fills every bin.
+    So the level of a band's *quieter* bins tells how much noise is in it, and
+    tones hardly move that figure.  ``edges`` are band limits in Hz.  The low
+    quantile is scaled so that for pure noise the result is the band's whole
+    amplitude.
+    """
+    out = np.zeros((mag.shape[0], len(edges) - 1), dtype=np.float32)
+    scale = math.sqrt(2.0 / (-2.0 * math.log(1.0 - share)))        # Rayleigh: quantile -> root mean square
+    for k in range(len(edges) - 1):
+        a, b = int(math.ceil(edges[k] / bin_hz)), int(math.ceil(edges[k + 1] / bin_hz))
+        b = min(b, mag.shape[1])
+        if b - a < 5:                                               # too few bins to tell a tone from noise
+            continue
+        cut = np.partition(mag[:, a:b], int(share * (b - a)), axis=1)[:, int(share * (b - a))]
+        out[:, k] = cut * scale * math.sqrt(b - a)
+    return out
+
+
 def log_matrix(np, n_linear, bin_hz, centres, bins_per_semitone):
     """``[log bins, linear bins]``: how to gather a linear spectrum into bins spaced evenly in pitch.
 

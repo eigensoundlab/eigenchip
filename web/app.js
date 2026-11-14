@@ -213,7 +213,8 @@ async function convert(arrangeOnly) {
     }
     progress(null);
     status("Arranging…");
-    state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value) });
+    state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value),
+      expression: $("expression").value });
     show();
     status("Making the chip sound…");
     await sound();
@@ -235,9 +236,23 @@ function setUrl(which, blobOrNull) {
   if (!state.urls[which]) players[which].removeAttribute("src");
 }
 
+// Sound against sound: the only comparison that does not rest on what the transcriber heard.
+function likeness(l) {
+  const p = $("likeness");
+  p.hidden = !l || l.error !== undefined;
+  if (p.hidden) return;
+  p.innerHTML = "";
+  const lead = document.createElement("b");
+  lead.textContent = "Sound against sound: ";
+  p.append(lead, `harmony ${pct(l.harmony)}, bass ${pct(l.bass)}, loudness ${pct(l.loudness)}, movement ${pct(l.movement)}. ` +
+    "How alike the chip version and the original are in these respects, whatever the transcriber made of the notes; " +
+    "0% is two unrelated sounds.");
+}
+
 async function sound() {
   state.chipBytes = await ask("chip", {});
   setUrl("chip", new Blob([state.chipBytes], { type: "audio/wav" }));
+  likeness(await ask("likeness", {}));
   const s = state.source;
   let note = "";
   state.originalIsRecording = false;
@@ -273,7 +288,9 @@ function show() {
   $("source-name").textContent = v.kind === "audio" ? "Heard" : "In the file";
   $("played-toggle").hidden = !v.played;
   $("effects-toggle").hidden = !(v.effects || []).length;
-  $("third-name").textContent = v.voices.some((x) => x.role === "chords") ? "Chords" : "Inner voice";
+  const inner = v.voices.filter((x) => x.role === "inner").length;
+  $("third-name").textContent = [inner > 1 ? "Inner voices" : inner ? "Inner voice" : "", v.voices.some((x) => x.role === "chords") ? "chords" : ""]
+    .filter(Boolean).join(" and ").replace(/^c/, "C") || "Chords";
   draw();
   table();
 
@@ -291,8 +308,10 @@ function show() {
       const names = { riser: "riser", fall: "fall", swell: "swell", impact: "impact" };
       const count = Object.keys(names).map((k) => [fx.filter((e) => e.kind === k).length, names[k]]).filter(([n]) => n)
         .map(([n, name]) => `${n} ${name}${n === 1 ? "" : "s"}`);
-      parts.push(`Besides notes it found ${b(count.join(", "))}; the chip version plays them on tracks of their own, sweeps as staircases.`);
+      parts.push(`Besides notes it found ${b(count.join(", "))}; the chip version plays them on tracks of their own, ` +
+        `${v.expression === "plain" ? "sweeps as staircases" : "as notes that slide and swell"}.`);
     }
+    if (v.bed) parts.push(`About ${b(pct(info.noise_share || 0))} of the sound is lasting noise - wind, rumble, wash - which a noise track follows.`);
     if (info.cleaned_away) parts.push(`Tidying took out ${b(info.cleaned_away)} notes that looked like mistakes.`);
     if (f.transcription) {
       const t = f.transcription;
@@ -310,6 +329,7 @@ function show() {
   if (f.notes) {
     parts.push(`Up to ${b(v.polyphony[1])} notes sounded at once; the chip version has ${b(v.voices.length)} voice${v.voices.length === 1 ? "" : "s"}` +
       `${v.drums.length ? " and drums" : ""}, in ${v.patterns[0]} patterns of which ${v.patterns[1]} differ.`);
+    if (v.needs) parts.push("The song uses levels or slides, which need CLIo 2.1; choose \u201cplainly\u201d for one that CLIo 2.0 plays.");
   }
   $("facts").innerHTML = parts.join(" ");
   $("against").textContent = {

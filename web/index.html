@@ -6,7 +6,7 @@
 <title>eigenchip workbench</title>
 <meta name="description" content="Reduce a sound or MIDI file to a few chip voices, in your browser. See what was heard, what was kept, and hear both.">
 <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=0.5.0">
+<link rel="stylesheet" href="app.css?v=0.6.0">
 </head>
 <body>
 <header class="top">
@@ -74,8 +74,12 @@
         <option value="skyline">skyline</option>
       </select>
       for
-      <select id="voices" aria-label="Number of pitched voices"><option>3</option><option>2</option><option>1</option></select>
-      voices.
+      <select id="voices" aria-label="Number of pitched voices" title="Three is what a classic sound chip has. More voices keep more of a dense piece."><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select>
+      voices,
+      <select id="expression" aria-label="How the song is played" title="With dynamics and slides, notes follow the loudness of the original and sweeps slide; the song then needs CLIo 2.1. Plainly is the chip as it was: one level, sweeps in steps, playable by CLIo 2.0.">
+        <option value="full">with dynamics and slides</option>
+        <option value="plain">plainly, in steps</option>
+      </select>.
       <button type="button" id="go" class="go" disabled>Convert</button>
       <button type="button" id="stop" class="quiet" hidden>Stop</button>
     </p>
@@ -128,6 +132,7 @@
     <div class="scores">
       <h2>How much survived</h2>
       <p class="against" id="against"></p>
+      <p class="likeness" id="likeness" hidden></p>
       <div class="table-wrap">
         <table id="scores">
           <thead><tr>
@@ -149,8 +154,9 @@
 
 <footer>
   <p>eigenchip <span id="version"></span> by Daniel Sandner, Apache-2.0. The chip sound is made by the synthesizer of
-  <a href="https://github.com/eryxgames/CLIo">CLIo</a> 2.0.0. Everything runs in this page; files are not uploaded.</p>
+  <a href="https://github.com/eryxgames/CLIo">CLIo</a>, as it will be in 2.1 (slides and levels in songs).
+  Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.5.0"></script>
+<script src="app.js?v=0.6.0"></script>
 </body>
 </html>

@@ -42,6 +42,8 @@ BPS = 3                         # spectrogram bins per semitone
 N_FFT, HOP = 4096, 512          # the ordinary window: 186 ms
 MAX_HZ = 5500.0
 DEEP_FACTOR, DEEP_N_FFT = 8, 2048       # the deep window: 743 ms, on sound slowed to an eighth of the rate
+QUIET = 1.0                     # 1: one threshold for the whole piece; lower: quiet passages get their own
+NOISE_LOW = 40.0                # Hz: noise is looked for from here up
 CROSS = (55.0, 80.0)            # Hz: the deep window below, the ordinary one above, blended between
 SHORT_N_FFT, SHORT_HOP = 1024, 256      # the timing window: 46 ms
 
@@ -85,6 +87,10 @@ class Spectrum:
         linear = analysis.stft(self.samples, N_FFT, HOP, MAX_HZ, rate) / (N_FFT / 4.0)
         gather = analysis.log_matrix(np, linear.shape[1], rate / float(N_FFT), self.centres, BPS)
         raw = np.sqrt((linear ** 2) @ gather.T)
+        # what is noise rather than tone, in bands a third of an octave wide (see analysis.noise_floor)
+        self.noise_edges = [NOISE_LOW * 2.0 ** (k / 3.0) for k in range(int(3 * math.log(MAX_HZ / NOISE_LOW, 2)) + 1)]
+        noise = analysis.noise_floor(np, linear, rate / float(N_FFT), self.noise_edges)
+        whole = np.sqrt((linear[:, int(NOISE_LOW * N_FFT / rate):] ** 2).sum(axis=1))
         lobe = np.full(count, 2.0 * rate / N_FFT)                    # width of a spectral peak, in Hz
         if deep and len(self.samples) > DEEP_N_FFT * DEEP_FACTOR:
             slow_rate = rate / float(DEEP_FACTOR)
@@ -92,11 +98,18 @@ class Spectrum:
             low = analysis.stft(slow, DEEP_N_FFT, HOP // DEEP_FACTOR, None, slow_rate) / (DEEP_N_FFT / 4.0)
             gather_low = analysis.log_matrix(np, low.shape[1], slow_rate / DEEP_N_FFT, self.centres, BPS)
             frames = min(len(raw), len(low))
+            fine = analysis.noise_floor(np, low, slow_rate / DEEP_N_FFT, self.noise_edges)      # the low bands need
+            lows = (noise[:frames] == 0).all(axis=0) & (fine[:frames] != 0).any(axis=0)         # the long window
+            noise = noise[:frames]
+            noise[:, lows] = fine[:frames][:, lows]
+            whole = whole[:frames]
             raw, low = raw[:frames], np.sqrt((low[:frames] ** 2) @ gather_low.T)
             share = np.clip((CROSS[1] - self.centres) / (CROSS[1] - CROSS[0]), 0.0, 1.0).astype(np.float32)
             raw = raw * (1.0 - share) + low * share
             lobe = lobe * (1.0 - share) + (2.0 * slow_rate / DEEP_N_FFT) * share
         self.raw = raw.astype(np.float32)
+        self.noise = noise                                           # [frames, bands] amplitude of the noise
+        self.whole = whole                                           # [frames] amplitude of everything
         step = self.centres * (2.0 ** (1.0 / (12.0 * BPS)) - 1.0)    # width of a pitch bin, in Hz
         self.sigma = np.maximum(0.7, 0.5 * lobe / step)              # width of a peak, in pitch bins
 
@@ -168,7 +181,7 @@ class Spectrum:
 # ---------------------------------------------------------------------- #
 def cut_notes(spec, act, threshold=0.12, frame_share=0.08, min_seconds=0.07, gap_seconds=0.05,
               restrike=1.4, ghost=0.4, low_pitch=48, low_seconds=0.12, kick_seconds=0.24,
-              smooth_seconds=0.0, snap=True):
+              smooth_seconds=0.0, snap=True, quiet=QUIET):
     """Turn a ``[frames, pitches]`` activation table into ``(onset, offset, pitch, strength)`` notes.
 
     The table is smoothed in time (a three-frame median removes one-frame
@@ -184,6 +197,11 @@ def cut_notes(spec, act, threshold=0.12, frame_share=0.08, min_seconds=0.07, gap
     ``restrike``: the same note played again.  With ``snap``, onsets are moved
     to the nearest onset peak, since the short window knows *when* far better
     than the long pitch analysis does.
+
+    With ``quiet`` below 1 the threshold follows the music: a passage is judged
+    against the loudest moment within 2.5 s of it, down to ``quiet`` times the
+    level of the whole piece.  It finds the notes of quiet passages and, with
+    them, more wrong ones; it is off by default (see the research log).
 
     Notes below ``low_pitch`` must last ``low_seconds`` - and ``kick_seconds``
     if they begin where a kick drum was found - because a kick looks like a
@@ -204,8 +222,14 @@ def cut_notes(spec, act, threshold=0.12, frame_share=0.08, min_seconds=0.07, gap
         act = (csum[span:] - csum[:-span]) * kernel[0]
     level = float(np.percentile(act.max(axis=1), 98)) or 1.0
     frame_top = act.max(axis=1, keepdims=True)
-    strong = (act >= threshold * level) & (act >= frame_share * frame_top)
-    weak = act >= 0.5 * threshold * level
+    bar = level
+    if quiet and quiet < 1.0:                               # a quiet passage is judged against itself, within limits
+        k = max(1, int(round(2.5 * spec.fps)))
+        top = frame_top[:, 0]
+        near = np.array([top[max(0, i - k):i + k + 1].max() for i in range(frames)])
+        bar = np.maximum(quiet * level, np.minimum(level, near))[:, None]
+    strong = (act >= threshold * bar) & (act >= frame_share * frame_top)
+    weak = act >= 0.5 * threshold * bar
     min_len = max(2, int(round(min_seconds * spec.fps)))
     low_len = max(min_len, int(round(low_seconds * spec.fps)))
     kick_len = max(low_len, int(round(kick_seconds * spec.fps)))

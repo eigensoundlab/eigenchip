@@ -25,6 +25,7 @@ from .arrangers import ARRANGERS, DEFAULT, arrange
 from .ir import pitch_name, quantize
 from .audio.transcribe import DEFAULT as T_DEFAULT
 from .audio.transcribe import TRANSCRIBERS
+from .arrangers.common import MAX_VOICES
 from .readers import read
 from .writers import clio
 
@@ -107,7 +108,7 @@ def cmd_convert(args):
     score = _read(args)
     grid = quantize(score, args.steps_per_beat)
     arr = arrange(grid, args.arranger, args.voices)
-    song = clio.to_song(arr, grid, args.bars_per_pattern, args.title)
+    song = clio.to_song(arr, grid, args.bars_per_pattern, args.title, expression=args.expression)
     problems = clio.validate(song)
     if problems:
         print("internal error, the song is not valid:\n  " + "\n  ".join(problems), file=sys.stderr)
@@ -186,7 +187,11 @@ def main(argv=None):
     def common(p):
         p.add_argument("input")
         p.add_argument("--steps-per-beat", type=int, default=4, help="grid resolution (default 4 = sixteenths)")
-        p.add_argument("--voices", type=int, default=3, choices=(1, 2, 3), help="pitched voices (default 3)")
+        p.add_argument("--voices", type=int, default=3, choices=range(1, MAX_VOICES + 1), metavar="N",
+                       help="pitched voices, 1 to %d (default 3, as on a classic sound chip)" % MAX_VOICES)
+        p.add_argument("--expression", choices=clio.EXPRESSION, default="full",
+                       help="full: notes follow the loudness of the source, sweeps slide (the song needs CLIo 2.1); "
+                            "plain: one level, sweeps in steps, plays on CLIo 2.0 (default full)")
         p.add_argument("--bars-per-pattern", type=int, default=4)
         audio(p)
 

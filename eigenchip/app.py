@@ -60,6 +60,7 @@ class Session:
         self.kind = None            # "midi" or "audio"
         self.song = None
         self.grid = None
+        self.likeness = None        # the chip sound compared with the sound that was opened, once both exist
 
     # ------------------------------------------------------------------ #
     # opening
@@ -76,7 +77,7 @@ class Session:
         if title and not score.title:
             score.title = title
         self.score, self.truth, self.kind = score, dict(truth or {}), "midi"
-        self.reference = self.samples = self.song = self.grid = self.played = None
+        self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
 
     def open_audio(self, samples, rate=22050, title="", transcriber=None, tempo=None, offset=None,
@@ -101,7 +102,7 @@ class Session:
                                         title, bool(drums), int(voices or 0), progress,
                                         quality or "standard", clean or "light", bool(effects))
         self.kind, self.truth, self.reference, self.played = "audio", {}, None, None
-        self.song = self.grid = None
+        self.song = self.grid = self.likeness = None
         return self.facts()
 
     def open_midi_as_audio(self, data, title="", colour="band", drums=True, truth=None, **options):
@@ -169,8 +170,12 @@ class Session:
     # ------------------------------------------------------------------ #
     # arranging
     # ------------------------------------------------------------------ #
-    def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4):
-        """Reduce the opened piece. Returns everything the page draws and offers for download."""
+    def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4, expression="full"):
+        """Reduce the opened piece. Returns everything the page draws and offers for download.
+
+        ``expression`` is ``full`` (levels and slides; the song needs CLIo 2.1)
+        or ``plain`` (one level, sweeps in steps; plays on CLIo 2.0).
+        """
         if self.score is None:
             raise ValueError("Open a file first.")
         grid = quantize(self.score, int(steps_per_beat))
@@ -183,7 +188,7 @@ class Session:
         table = []
         for name in ARRANGERS:
             arr = arrange(grid, name, int(voices))
-            song = clio.to_song(arr, grid, int(bars_per_pattern))
+            song = clio.to_song(arr, grid, int(bars_per_pattern), expression=expression)
             res = metrics.evaluate(judge, arr, song, truth)
             res["compression"] = metrics.evaluate(grid, arr, song)["compression"]
             row = {"arranger": name, "voices": len(arr.voices), "summary": getattr(ARRANGERS[name], "SUMMARY", "")}
@@ -198,7 +203,7 @@ class Session:
         problems = clio.validate(song)
         if problems:
             raise ValueError("The song came out invalid: " + "; ".join(problems))
-        self.grid, self.song = grid, song
+        self.grid, self.song, self.likeness = grid, song, None
         mean_poly, max_poly = metrics.polyphony(grid)
         pitches = [n.pitch for n in grid.pitched] + [p for v in arr.voices for _s, _d, ps in v.events for p in ps]
         spb = grid.steps_per_beat
@@ -213,7 +218,8 @@ class Session:
             "steps_per_beat": grid.steps_per_beat, "steps_per_bar": grid.steps_per_bar,
             "steps": max([grid.length] + [s + d for v in arr.voices for s, d, _p in v.events]
                          + [int(e["end"]) + 1 for e in effects]),
-            "effects": effects,
+            "effects": effects, "expression": expression, "needs": song.get("needs"),
+            "bed": any("bed" in tracks for tracks in song["patterns"].values()),
             "step_seconds": 60.0 / grid.tempo / grid.steps_per_beat,
             "offset": float(self.score.info.get("offset", 0.0) or 0.0) if self.kind == "audio" else 0.0,
             "source": [[n.start, n.dur, n.pitch, n.channel] for n in grid.pitched],
@@ -239,6 +245,16 @@ class Session:
         if self.song is None:
             raise ValueError("Arrange the piece first.")
         samples = synth.render_song(self.song)
+        self.likeness = None
+        if self.samples is not None:                        # there is a sound to compare with: do it now
+            try:
+                from .audio import compare
+                rate = getattr(synth, "RATE", 22050)
+                lead = float(self.score.info.get("offset", 0.0) or 0.0) if self.kind == "audio" else 0.0
+                heard = compare.compare(self.samples, samples, rate, lead)
+                self.likeness = {k: heard[k] for k in compare.KEYS + ("seconds",)}
+            except Exception as err:                        # a comparison that fails must not cost the sound
+                self.likeness = {"error": str(err)}
         path = _temp(".wav")
         try:
             synth.write_wav(path, samples)

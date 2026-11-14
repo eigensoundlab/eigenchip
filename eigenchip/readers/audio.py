@@ -12,6 +12,7 @@ tempo, an assumed meter, and the mistakes of the transcriber on top.  Everything
 """
 from __future__ import annotations
 
+import math
 import os
 
 from ..audio import RATE, analysis, decode
@@ -22,6 +23,7 @@ from ..ir import Note, Score
 from ..voices import separate
 
 
+NOISE_MATTERS = 0.08                            # share of the energy that must be lasting noise to write it down
 DRUM_PITCH = {"k": 36, "s": 38, "h": 42}        # General MIDI kick, snare, closed hi-hat
 
 
@@ -92,6 +94,38 @@ def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offs
         start = (t - phase) / beat
         if start > -0.5 / steps_per_beat:
             out.append(Note(max(0.0, start), 1.0 / steps_per_beat, DRUM_PITCH[kind], 100, 9, 0, drum=True))
+    # How loud the sound is at every step, for a writer that can say so (0 to 1, against the loud
+    # passages) - and separately how much of it is lasting noise (wind, rumble, wash) and how bright.
+    np = spec.np
+    whole = spec.whole.astype(np.float64)
+    top = float(np.percentile(whole, 95)) or 1.0
+    k = max(1, int(round(0.35 * spec.fps)))                 # a drum hit is noise too, but it does not last
+    floor = spec.noise.astype(np.float64)
+    lasting = floor.copy()
+    for d in range(1, k):
+        lasting[:-d] = np.minimum(lasting[:-d], floor[d:])
+    lasting = np.vstack((lasting[:1].repeat(k // 2, axis=0), lasting))[:len(floor)]     # centred on its window
+    for t, _kind in hits:                                   # a run of hi-hats lasts too; the kit plays those
+        lasting[max(0, int((t - 0.05) * spec.fps)):int((t + 0.2) * spec.fps) + 1] = 0.0
+    hiss = np.minimum(np.sqrt((lasting ** 2).sum(axis=1)), whole)
+    mids = np.array([math.sqrt(a * b) for a, b in zip(spec.noise_edges[:-1], spec.noise_edges[1:])])
+    weight = np.maximum((lasting ** 2).sum(axis=1), 1e-12)
+    bright = 69.0 + 12.0 * np.log2(np.exp((lasting ** 2 * np.log(mids)).sum(axis=1) / weight) / 440.0)
+    tones = np.sqrt(np.maximum(0.0, whole ** 2 - hiss ** 2))
+    step = beat / steps_per_beat
+    count = int(max(0.0, len(whole) / spec.fps - phase) / step) + 1
+    edges = np.clip(((phase + step * np.arange(count + 1)) * spec.fps).astype(int), 0, len(whole))
+
+    def per_step(curve, digits=2):
+        return [round(float(curve[a:max(b, a + 1)].mean()), digits) if a < len(curve) else 0.0
+                for a, b in zip(edges[:-1], edges[1:])]
+
+    info["attacks_per_second"] = round(len(analysis.peaks(np, spec.flux, 0.3)) / max(1.0, len(whole) / spec.fps), 2)
+    info["loudness"] = per_step(np.minimum(1.0, tones / top))
+    info["loudness_per_beat"] = steps_per_beat
+    info["noise_share"] = round(float((hiss ** 2).sum() / max((whole ** 2).sum(), 1e-12)), 3)
+    if info["noise_share"] >= NOISE_MATTERS:
+        info["texture"] = {"level": per_step(np.minimum(1.0, hiss / top)), "pitch": per_step(bright, 1)}
     # effects keep their own list: they are not notes, and a writer may render them or leave them out
     info["effects"] = [dict(e, start=round(max(0.0, (e["start"] - phase) / beat), 3),
                             end=round(max(0.0, (e["end"] - phase) / beat), 3)) for e in found
