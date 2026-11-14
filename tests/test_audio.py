@@ -360,8 +360,9 @@ class QualityCleaningAndEffectsTests(unittest.TestCase):
         self.assertEqual(sorted(e["kind"] for e in hiss), ["riser", "swell"])
         first = found[0]
         self.assertEqual(first["kind"], "riser")
-        self.assertAlmostEqual(first["low"], 48, delta=2.5)
-        self.assertAlmostEqual(first["high"], 84, delta=2.5)
+        self.assertTrue(2.0 <= first["start"] <= 2.6 and 4.8 <= first["end"] <= 5.2, first)   # its quiet start may be cut
+        for when, pitch in ((first["start"], first["low"]), (first["end"], first["high"])):
+            self.assertAlmostEqual(pitch, 48 + 36 * (when - 2.0) / 3.0, delta=2.5)          # but it is where it says
         # music is not an effect: scale runs, arpeggios, plucked basses, drums
         for name, colour in (("bach_prelude", "pluck"), ("twinkle", "band"), ("groove", "band"), ("deep_drone", "pad")):
             self.assertEqual(find_effects(Spectrum(synth.render(piece(name), colour))), [], name)

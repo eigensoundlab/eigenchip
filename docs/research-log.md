@@ -37,14 +37,22 @@ effects made by the reference synthesizer, alone and over corpus pieces. Numbers
    a tenth. An *impact* is told from a kick by a low tail that is still fading a second
    later, from a plucked bass note by how noise-like its first instant is, and from a
    drum-and-bass pattern only by coming alone - a rule that will fail on some music.
-6. *Results.* Alone, 8 of 8. Over the drone 6, over two tunes with drums 5 and 7, with 2
-   wrong reports in all. Nothing reported in 30 renderings of the plain corpus. Start and
-   end pitches of a tonal sweep are within about two semitones.
+6. *Results.* Alone, 8 of 8. Over the drone 6, over two tunes with drums 5 and 7, with 3
+   wrong reports in all. Nothing reported in 30 renderings of the plain corpus. A tonal
+   sweep is reported within about two semitones of where it really is at the reported
+   times; the quiet first tenths of a second of a riser are usually cut off.
 7. *Effects are worth finding for the notes' sake.* Uncleaned, the eight effects pull note
    precision down to 0.40 / 0.37 / 0.32 on the three scenes. Removing short notes along
-   the detected paths (and their second and third partials) gives 0.74 / 0.46 / 0.63.
-   With the true positions in place of the detected ones it is 0.74 / 0.54 / 0.65: on the
-   tune where three effects were missed, detection is what limits the repair.
+   the detected paths (and their second and third partials) gives 0.74 / 0.54 / 0.63.
+   With the true positions in place of the detected ones it is 0.74 / 0.54 / 0.65, so the
+   detector is not what limits the repair. What remains is the debris of hisses and
+   impacts, which the rules catch poorly even when told where to look. Getting the path
+   right mattered: a riser reported a third of a second too long was three semitones off
+   at its end, and the notes there stayed in.
+8. *Cost.* Read at full resolution with eight slants, the sweep search took twice as long
+   as everything else together. Twenty looks a second, six slants, and the second
+   smallest of nine readings instead of a sorted percentile brought it to a fifth of that
+   with the same detections.
 
 **Caveats.** Thresholds were tuned on the same synthetic effects that are reported, so
 these are fitted figures, not a test. Real risers are layered, filtered and reverberant.

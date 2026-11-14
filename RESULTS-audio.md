@@ -167,7 +167,7 @@ the machine that ran this.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | fast | 46 ms | 3 | 10 | 0.84 | 0.89 | 0.86 | x 0.5 |
 | standard | 23 ms | 3 | 16 | 0.87 | 0.90 | 0.88 | x 1.0 |
-| fine | 12 ms | 4 | 16 | 0.90 | 0.89 | 0.89 | x 2.7 |
+| fine | 12 ms | 4 | 16 | 0.90 | 0.89 | 0.89 | x 2.8 |
 
 ## Cleaning
 
@@ -194,7 +194,7 @@ two tunes with drums. `found` counts those reported with the right kind in the r
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | the effects alone | 3 of 3 | 1 of 1 | 2 of 2 | 2 of 2 | 8 of 8 | 0 |
 | over Deep drone (pads) | 2 of 3 | 1 of 1 | 2 of 2 | 1 of 2 | 6 of 8 | 1 |
-| over Ode to Joy (band, with drums) | 2 of 3 | 1 of 1 | 1 of 2 | 1 of 2 | 5 of 8 | 0 |
+| over Ode to Joy (band, with drums) | 2 of 3 | 1 of 1 | 1 of 2 | 1 of 2 | 5 of 8 | 1 |
 | over Groove (band, with drums) | 2 of 3 | 1 of 1 | 2 of 2 | 2 of 2 | 7 of 8 | 1 |
 
 False alarms: the plain corpus, where there are no effects, in three tone colours (30 renderings, 11 minutes of sound): none reported.
@@ -209,11 +209,11 @@ What the effects do to the notes underneath, and what cleaning gives back:
 | over Deep drone (pads) | effects, cleaned knowing where they are | 0.74 | 0.85 | 0.79 |
 | over Ode to Joy (band, with drums) | no effects in the sound | 0.58 | 0.77 | 0.66 |
 | over Ode to Joy (band, with drums) | effects, not cleaned | 0.37 | 0.71 | 0.49 |
-| over Ode to Joy (band, with drums) | effects, cleaned (light) | 0.46 | 0.69 | 0.55 |
+| over Ode to Joy (band, with drums) | effects, cleaned (light) | 0.54 | 0.70 | 0.61 |
 | over Ode to Joy (band, with drums) | effects, cleaned knowing where they are | 0.54 | 0.70 | 0.61 |
 | over Groove (band, with drums) | no effects in the sound | 0.59 | 0.93 | 0.72 |
 | over Groove (band, with drums) | effects, not cleaned | 0.32 | 0.89 | 0.47 |
-| over Groove (band, with drums) | effects, cleaned (light) | 0.63 | 0.84 | 0.72 |
+| over Groove (band, with drums) | effects, cleaned (light) | 0.63 | 0.85 | 0.72 |
 | over Groove (band, with drums) | effects, cleaned knowing where they are | 0.65 | 0.85 | 0.73 |
 
 ## Lossy formats

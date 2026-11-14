@@ -34,7 +34,7 @@ from .transcribe import LOW, SHORT_N_FFT
 DEEP = 31                                                   # MIDI pitch: below it is rumble
 FLAT = 0.75
 HISS_SHARE = 0.25
-SLOPES = (2.5, 3.5, 5.0, 7.0, 10.0, 14.0, 20.0, 28.0)      # semitones per second, each tried up and down
+SLOPES = (2.5, 4.0, 6.5, 10.0, 16.0, 26.0)                  # semitones per second, each tried up and down
 
 
 def find_effects(spec, min_seconds=0.6, min_travel=5.0, kinds=("riser", "fall", "swell", "impact")):
@@ -54,7 +54,10 @@ def find_effects(spec, min_seconds=0.6, min_travel=5.0, kinds=("riser", "fall", 
         return []
     out = []
     if "riser" in kinds or "fall" in kinds:
-        tone = _tone_sweeps(np, raw, ref, spec.fps, spec.bps, min_seconds, min_travel)
+        every = max(1, int(round(spec.fps / 21.5)))            # twenty looks a second are enough for a sweep
+        n = raw.shape[0] // every
+        coarse = raw[:n * every].reshape(n, every, raw.shape[1]).mean(axis=1).astype(np.float32)
+        tone = _tone_sweeps(np, coarse, ref, spec.fps / every, spec.bps, min_seconds, min_travel)
         hiss = _hiss_sweeps(np, raw, spec.fps, spec.bps, min_seconds, min_travel)
         for e in tone + hiss:                               # the same sweep seen twice (an overtone, or its hiss) is one
             twin = [o for o in out if o["kind"] == e["kind"] and min(o["end"], e["end"]) - max(o["start"], e["start"])
@@ -86,14 +89,22 @@ def _shifted(np, a, dt, db):
     return out
 
 
-def _along(np, raw, fps, bps, slope, share=0.2, looks=11):
-    """What is still there when the picture is read along a slant of ``slope`` semitones a second."""
+def _along(np, raw, fps, bps, slope, looks=9):
+    """What is still there when the picture is read along a slant of ``slope`` semitones a second.
+
+    The second smallest of ``looks`` readings along the slant: one dropout is forgiven, two are not.
+    """
     half = min(0.6, max(0.12, 1.5 / abs(slope)))            # far enough to leave a held note behind
     w = max(2, int(round(half * fps)))
-    taus = sorted(set(int(round(x)) for x in np.linspace(-w, w, looks)))
-    stack = np.stack([_shifted(np, raw, tau, int(round(slope * bps * tau / fps))) for tau in taus])
-    k = int(share * (len(taus) - 1))
-    return np.partition(stack, k, axis=0)[k]
+    least = second = None
+    for tau in sorted(set(int(round(x)) for x in np.linspace(-w, w, looks))):
+        x = _shifted(np, raw, tau, int(round(slope * bps * tau / fps)))
+        if least is None:
+            least, second = x, np.full_like(x, np.inf)
+        else:
+            second = np.minimum(second, np.maximum(least, x))
+            least = np.minimum(least, x)
+    return second
 
 
 def _tone_sweeps(np, raw, ref, fps, bps, min_seconds, min_travel):
@@ -138,6 +149,10 @@ def _tone_sweeps(np, raw, ref, fps, bps, min_seconds, min_travel):
             ts = sorted(path)
             for t in ts:                                    # used up: this line and its near neighbours
                 work[t, max(0, path[t] - 2 * bps):path[t] + 2 * bps + 1] = 0.0
+            level = float(np.median([best[t, path[t]] for t in ts]))
+            solid = [t for t in ts if best[t, path[t]] >= 0.35 * level]    # the faint ends are the follower groping
+            path = {t: path[t] for t in ts if solid[0] <= t <= solid[-1]}
+            ts = sorted(path)
             a, z = ts[0], ts[-1]
             travel = sign * (path[z] - path[a]) / float(bps)
             if (z - a + 1) / fps < min_seconds or travel < min_travel or len(ts) < 0.7 * (z - a + 1):
@@ -146,7 +161,7 @@ def _tone_sweeps(np, raw, ref, fps, bps, min_seconds, min_travel):
             pairs = [(path[t + span] - path[t]) * sign for t in ts if t + span in path]
             onward = sum(1 for d in pairs if d >= 0.25 * 1.5 * bps) / float(max(1, len(pairs)))
             strong = float(np.median([best[t, path[t]] for t in ts]))
-            if onward >= 0.85 and strong >= 0.08 * ref and _stuck(np, raw, path, ts, bps) <= 0.45:
+            if onward >= 0.85 and strong >= 0.08 * ref and _stuck(np, raw, path, ts, bps) <= 0.3:
                 tracks.append((a, z, path))
         tracks.sort(key=lambda k: k[2][k[0]])                # lowest first: the fundamental before its overtones
         kept = []
