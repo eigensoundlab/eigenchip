@@ -13,7 +13,7 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.7.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Status: early (0.8.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangement strategies and four transcription
 baselines, finds drums, follows the tune through a recording and sorts the other notes into lines, and describes risers, falls,
 swells and impacts apart from the notes, and follows the loudness and the lasting noise of a
@@ -208,10 +208,14 @@ same corpus:
   the least leaping. From audio the lead voice then keeps 0.81 of the melody instead of
   0.58, and a slow tune under a busier, higher part - the texture of orchestral writing -
   is found whole where it was lost whole. Prominence is what decides; a tune that is not
-  what one hears first is not found. On the author's orchestral recording the lead line
-  jumps about half as much (leaps of more than a sixth: 26 % of its moves before, 14 %
-  now) and stays between G2 and D5 instead of C#1 and D#6; the likeness of the sound as a
-  whole is about what it was.
+  what one hears first is not found. The line is then tidied with what is known only
+  once it exists: the key of the piece (a note outside it counts half), where the tune
+  lies (a note far from there is something else filling a rest), and that a held note
+  the transcriber wrote in pieces is one note. On the author's orchestral recording the
+  lead went from 91 notes between C#1 and D#6, a quarter of its moves leaps of more than
+  a sixth, to 52 notes with three such leaps; the likeness of the sound as a whole is a
+  little lower than it was (harmony 0.76 to 0.73, bass 0.81 to 0.77), because a lead that
+  hops through every register also plays more of what sounds.
 
 ## What the scores mean, and what they do not
 

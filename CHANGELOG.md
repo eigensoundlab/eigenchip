@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.0 - 2026-11-14
+
+A steadier tune, and a noise bed that does not click.
+
+- **The tune, tidied.** By the author's ear the 0.7.0 lead was close but janky. Three
+  things are known only once a first line exists, so the search now runs again with them:
+  the **key** of the piece (a note outside it counts half - more often a mistake of the
+  ear than a chromatic step; a piece in no key is left alone), **where the tune lies** (a
+  note more than a fifth from the middle of the tune's notes of the last and next eight
+  seconds counts less, the further the less: it is another part filling a rest), and
+  that a **blip** shorter than a tenth of a second is not a note of the tune.
+- **Held notes put together.** A long note in a recording wavers and is written as
+  several, which plays back as a stutter. Neighbours of one pitch less than 0.3 s apart
+  are joined unless the pitch was heard to be struck again (the note cutter's own test).
+- **The lead is left whole.** Long notes of the lead are no longer struck again to follow
+  the loudness, unless they last two bars or more; other voices in pieces of half a bar.
+- **A smoother noise bed.** The lasting noise of a recording is evened out over about two
+  beats before it is written, so it no longer flickers on and off; its notes last up to
+  two bars while level and colour glide evenly; and the bed instrument comes in over 0.6 s,
+  leaves over 0.8 s and is low-passed.
+
+On the author's recordings (five voices; harmony / bass / loudness / movement): the
+orchestral piece 0.73 / 0.77 / 0.88 / 0.41 (0.7.0: 0.75 / 0.77 / 0.89 / 0.42), its lead 52
+notes with 3 far leaps where 0.7.0 had 75 with ten; the ambient piece 0.63 / 0.64 / 0.79 /
+0.40 (0.7.0: 0.64 / 0.67 / 0.79 / 0.31). Over the corpus the melody kept is unchanged
+(0.81).
+
 ## 0.7.0 - 2026-11-14
 
 The tune, followed with the whole piece in view.

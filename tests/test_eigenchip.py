@@ -224,9 +224,18 @@ class MoreVoicesAndExpressionTests(unittest.TestCase):
     def test_noise_bed(self):
         texture = {"level": [0.0, 0.0, 0.3, 0.5, 0.7, 0.9, 0.9, 0.1, 0.0, 0.0], "pitch": [60.0] * 5 + [80.0] * 5}
         full = clio.texture_events(texture, 1.0, 10)
-        self.assertEqual([(s0, d) for s0, d, _p, _b in full], [(2, 6)])
+        # lasting noise is evened out over about two beats before it is written: one note, no flicker
+        self.assertEqual([(s0, d) for s0, d, _p, _b in full], [(0, 10)])
         (p0, p1), (l0, l1) = full[0][3]
-        self.assertTrue(p1 > p0 and (l0, l1) == (3, 1))
+        self.assertTrue(p1 >= p0 and 1 <= l0 <= 4 and 1 <= l1 <= 4)
+        # a long steady stretch is one long note, a break in it starts another
+        steady = {"level": [0.5] * 40 + [0.0] * 40 + [0.6] * 40, "pitch": [60.0] * 120}
+        notes = clio.texture_events(steady, 1.0, 120)
+        self.assertLessEqual(len(notes), 8)
+        self.assertEqual(max(d for _s, d, _p, _b in notes), clio.BED_LONGEST)
+        self.assertFalse([n for n in notes if 52 <= n[0] < 64])                 # the silence in the middle stays silent
+        song_bed = dict(clio.BED, **clio.BED_SMOOTH)
+        self.assertGreater(song_bed["attack"], 0.25)                            # wind does not click
         plain = clio.texture_events(texture, 1.0, 10, full=False)
         self.assertEqual([(s0, d, b) for s0, d, _p, b in plain], [(2, 4, None), (6, 1, None)])
         self.assertEqual(clio.texture_events(None, 1.0, 10), [])

@@ -62,10 +62,13 @@ def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offs
         hits = [h for h in hits if not any(abs(h[0] - t) < 0.08 for t in booms)]       # the impact owns its own crack
     heard = transcribe(spec, transcriber, **({"restrike": 2.4} if clean == "strict" and transcriber != "pads" else {}))
     notes = clean_notes(heard, clean, found, hits)
-    leading = set()
+    line, rest = [], notes
     if tune and voices and voices > 1 and transcriber != "mono":
         spec.tell(0.85, "Following the tune")
-        leading = {id(notes[i]) for i in melody.find(spec, notes)}
+        chosen = melody.find(spec, notes)
+        line = melody.mend(spec, notes, chosen)
+        taken = {id(notes[i]) for i in chosen}
+        rest = [n for n in notes if id(n) not in taken]
     spec.tell(0.9, "Finding the beat")
     info = dict(info or {})
     info.update(source="audio", transcriber=transcriber, tempo_given=tempo is not None, quality=quality,
@@ -90,16 +93,15 @@ def score_from_samples(samples, rate=RATE, transcriber=DEFAULT, tempo=None, offs
     beat = 60.0 / bpm
     out = []
     lead = []
-    for note in notes:
-        t0, t1, pitch, strength = note
-        start = (t0 - phase) / beat
-        end = (t1 - phase) / beat
-        if end <= 0:
-            continue
-        start = max(0.0, start)
-        vel = int(max(30, min(127, 40 + 87 * strength)))
-        (lead if id(note) in leading else out).append(
-            Note(start, max(end - start, 1.0 / (steps_per_beat * 2)), pitch, vel, 0, 0))
+    for part, into in ((rest, out), (line, lead)):
+        for t0, t1, pitch, strength in part:
+            start = (t0 - phase) / beat
+            end = (t1 - phase) / beat
+            if end <= 0:
+                continue
+            start = max(0.0, start)
+            vel = int(max(30, min(127, 40 + 87 * strength)))
+            into.append(Note(start, max(end - start, 1.0 / (steps_per_beat * 2)), pitch, vel, 0, 0))
     for t, kind in hits:
         start = (t - phase) / beat
         if start > -0.5 / steps_per_beat:

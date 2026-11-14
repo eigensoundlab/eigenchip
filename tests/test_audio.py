@@ -513,6 +513,35 @@ class TuneTests(unittest.TestCase):
         self.assertLess(found["lines only"]["melody_recall"], 0.5)          # what sorting note by note makes of it
         self.assertGreaterEqual(found["followed"]["bass_recall"], 0.9)
 
+    def test_the_key_and_the_register_are_remembered(self):
+        from eigenchip.audio import melody
+        c_major = [(i * 0.5, i * 0.5 + 0.5, 60 + p, 0.8) for i, p in enumerate((0, 2, 4, 5, 7, 9, 11, 12, 7, 4, 0))]
+        self.assertEqual(melody.key_of(c_major), {0, 2, 4, 5, 7, 9, 11})
+        stray = c_major + [(6.0, 6.2, 61, 0.8)]                              # one wrong note does not change the key
+        self.assertEqual(melody.key_of(stray), {0, 2, 4, 5, 7, 9, 11})
+        every = [(i * 0.5, i * 0.5 + 0.5, 60 + i % 12, 0.8) for i in range(24)]
+        self.assertIsNone(melody.key_of(every))                              # all twelve alike: no key to keep to
+        # where the tune lies: the middle of its notes around that time, by worth
+        line = [(float(i), i + 1.0, 72, 1.0) for i in range(6)] + [(6.0, 7.0, 48, 1.0)]
+        lies = melody._register(line, list(range(7)), [1.0] * 7)
+        self.assertEqual(lies[6], 72)                                        # the low note is far from the tune
+        self.assertEqual(melody._register(line, [], [1.0] * 7), [None] * 7)
+
+    @needs_numpy
+    def test_a_held_note_cut_in_pieces_is_put_together_and_a_repeated_one_is_not(self):
+        from eigenchip.audio import melody
+        from eigenchip.audio.transcribe import Spectrum
+        held = Score([Note(0.0, 4.0, 69, 100, 0, 0), Note(4.0, 2.0, 72, 100, 0, 0)], 120)
+        again = Score([Note(0.0, 2.0, 69, 100, 0, 0), Note(2.0, 2.0, 69, 100, 0, 0), Note(4.0, 2.0, 72, 100, 0, 0)], 120)
+        pieces = [(0.0, 0.95, 69, 0.5), (1.0, 1.9, 69, 0.5), (2.0, 2.9, 72, 0.5)]   # what a wavering note is written as
+        for score, count in ((held, 2), (again, 3)):
+            spec = Spectrum(synth.render(score, "organ", drums=False))
+            self.assertEqual(len(melody.mend(spec, pieces, [0, 1, 2])), count)
+        whole = melody.mend(Spectrum(synth.render(held, "organ", drums=False)), pieces, [0, 1, 2])
+        self.assertEqual(whole[0][:3], (0.0, 1.9, 69))
+        far = [(0.0, 0.95, 69, 0.5), (1.6, 1.9, 69, 0.5)]                           # too far apart to be one note
+        self.assertEqual(len(melody.mend(Spectrum(synth.render(held, "organ", drums=False)), far, [0, 1])), 2)
+
     def test_a_midi_file_says_which_part_is_played_to_be_heard(self):
         for name in ("long_tune", "octaves", "crossing"):
             arr = arrange(quantize(piece(name)), "roles")
@@ -529,7 +558,8 @@ class TuneTests(unittest.TestCase):
         self.assertEqual((spans[0][0], spans[-1][1]), (0, 40))
         self.assertTrue(all(b - a >= clio.SHORTEST for a, b in spans))
         self.assertTrue(all(a2 == b1 for (_a, b1), (a2, _b) in zip(spans, spans[1:])))
-        self.assertEqual(clio._spans(hill, 0, 6), [(0, 6)])                  # too short to cut
+        self.assertEqual(clio._spans(hill, 0, 12), [(0, 12)])                # too short to cut
+        self.assertEqual(clio._spans(hill, 0, 28, shortest=clio.LEAD_SHORTEST), [(0, 28)])     # a tune is left whole
         self.assertEqual(clio._spans({(0, 60): 5}, 0, 40), [(0, 40)])        # levels per note: nothing to follow
         text, _sounded = clio._track([(0, 40, [36])], 0, 48, 16, hill)
         self.assertGreaterEqual(text.count("c2"), 2)                         # struck again where the music swells

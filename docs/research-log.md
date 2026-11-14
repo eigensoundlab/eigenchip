@@ -3,6 +3,47 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-14 - the janky tune, and the bed
+
+**The verdict by ear on 0.7.0**: "close - but the melody is too janky"; perhaps "an even
+longer check and harmonizing after".
+
+**What the jank was.** Listing the lead of the orchestral piece note by note showed three
+things. (1) Of 68 moves, 27 were *the same pitch again*, most after a gap of a few
+hundredths of a second: held notes that the transcriber had written in pieces (one A#4
+in seven). (2) Ten far leaps, in four excursions of about two seconds each: while the
+upper line rested, the chain went down two octaves to whatever was prominent there and
+came back. (3) A few short notes outside the key (C#, B in a piece in B flat).
+
+**What was done**, all in `eigenchip/audio/melody.py`, after a first line is drawn:
+- key: the major scale holding most of the sound (0.85 or more, else none); notes outside
+  it count half in the search;
+- register: for each note, the weighted median pitch of the first line within eight
+  seconds either side; beyond a fifth from it a note loses a tenth of its worth per
+  semitone, down to a fifth. Run until the line stops changing (at most twice);
+- blips under 0.1 s count nothing;
+- `mend`: same-pitch neighbours within 0.3 s are joined unless `struck_again` - the
+  cutter's notch test on the pitch's own short-window level.
+Result on the piece: 52 notes, 3 far leaps, 19 repeats left (those the test hears as
+struck again - they may be a real rhythm; the percussion under them makes it hard to
+say). Corpus melody unchanged at 0.81: *Ode to Joy*'s repeated notes survive the mending.
+
+**The cost, measured.** Sound against sound the orchestral piece went from 0.75 / 0.77 /
+0.89 / 0.42 to 0.73 / 0.77 / 0.88 / 0.41. A lead that fills every rest with something
+plays more of what sounds; a lead that rests is more of a tune. The numbers cannot
+tell which is wanted.
+
+**The bed.** In the ambient piece the lasting noise hovers around the level at which a
+bed note is written, so the bed was 53 notes of one to six steps, each with a 30 ms
+attack: it clicked. Evening the level out over eight steps either side gives 24 notes of
+up to two bars; with a slow attack and release and a mild low-pass the movement likeness
+rose from 0.31 to 0.40 (the centre of the sound follows the original better, 0.60 to
+0.79), loudness unchanged.
+
+**Not done: a level path.** A held note still cannot change level without being struck
+again. `c4@2>9>4:16` - levels at even points along the note - would be a small, backward
+compatible addition to CLIo's notation and would replace `_spans` altogether.
+
 ## 2026-11-14 - a lead line with a memory
 
 **Why.** By the author's ear, on his orchestral recording: better than before, but the

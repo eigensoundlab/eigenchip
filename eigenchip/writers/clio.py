@@ -55,7 +55,8 @@ def _mark(levels, a, b, bend=None, key=None):
 
 
 BEND = 1.5                      # levels: a held note is struck again where its loudness strays this far from a straight line
-SHORTEST = 4                    # steps: but never more often than this
+SHORTEST = 8                    # steps: but never more often than this
+LEAD_SHORTEST = 16              # the lead: only a note of two bars or more, and in pieces of a bar
 
 
 def _spans(levels, a, b, bend=BEND, shortest=SHORTEST):
@@ -92,12 +93,14 @@ def _rest(length):
     return "." if length == 1 else ".:%d" % length
 
 
-def _track(events, start, length, bar, levels=None):
+def _track(events, start, length, bar, levels=None, shortest=SHORTEST):
     """Notation for the events falling in ``[start, start + length)``.
 
     An event is ``(start, steps, pitches)``; a fourth item ``((pitch, pitch), (level, level))``
     makes it a slide with a level of its own, and ``levels`` (one per step) marks
-    the others. Both need CLIo 2.1.
+    the others. Both need CLIo 2.1. A long note is struck again where the
+    loudness turns (``_spans``), in pieces of at least ``shortest`` steps; a tune
+    is better left whole, so the lead is given a large number.
     """
     tokens, pos = [], start
     end = start + length
@@ -136,7 +139,7 @@ def _track(events, start, length, bar, levels=None):
             bend = ((p0 + (p1 - p0) * f0, p0 + (p1 - p0) * f1),
                     (int(round(l0 + (l1 - l0) * f0)), int(round(l0 + (l1 - l0) * f1))))
             pitches = [int(round(bend[0][0]))]
-        for a, b in ([(a, b)] if bend else _spans(levels, a, b)):
+        for a, b in ([(a, b)] if bend else _spans(levels, a, b, shortest=shortest)):
             mark = _mark(levels, a, b, bend, (ev_start, pitches[0]))
             emit(lambda n, p=pitches, m=mark: _token(p, n, m), a, b)
         sounded = True
@@ -218,6 +221,10 @@ def effect_slides(effects, steps_per_beat):
 
 BED_LOWEST = 24.0
 BED = {"wave": "noise", "attack": 0.03, "decay": 0.05, "sustain": 1.0, "release": 0.06, "gate": 1.0, "volume": 0.25}
+BED_SMOOTH = {"attack": 0.6, "release": 0.8, "lowpass": 0.35}     # for a bed that follows the source: wind does not click
+BED_LONGEST = 32                # steps: a bed note may last this long while level and colour move evenly
+BED_LEVEL, BED_PITCH = 1.0, 2.5     # how far from an even glide they may stray within one note
+BED_EVEN = 8                    # steps to either side over which the bed's level and colour are evened out
 
 
 def texture_events(texture, per, total, full=True):
@@ -230,11 +237,27 @@ def texture_events(texture, per, total, full=True):
     """
     if not texture:
         return []
-    def at(i):
-        j = min(len(texture["level"]) - 1, int(i * per))
-        level = int(min(9, round(9 * texture["level"][j])))
+    count = len(texture["level"])
+
+    def raw(i):
+        j = min(count - 1, int(i * per))
         # the chip's noise at note p has its centre near 0.78 p + 30 (measured), so ask for the note that fits
-        return level, min(96.0, max(BED_LOWEST, (texture["pitch"][j] - 30.0) / 0.78))
+        return 9.0 * texture["level"][j], min(96.0, max(BED_LOWEST, (texture["pitch"][j] - 30.0) / 0.78))
+
+    steps = [raw(i) for i in range(total)]
+    if full:                                                # lasting noise does not flicker: even out about a beat
+        wide = BED_EVEN
+        even = []
+        for i in range(total):
+            near = steps[max(0, i - wide):i + wide + 1]
+            weight = sum(l for l, _p in near)
+            even.append((sum(l for l, _p in near) / len(near),
+                         sum(l * p for l, p in near) / weight if weight > 0 else steps[i][1]))
+        steps = even
+
+    def at(i):
+        level, pitch = steps[min(total - 1, i)]
+        return int(min(9, round(level))), pitch
     floor = 1 if full else 3
     out, i = [], 0
     while i < total:
@@ -243,8 +266,17 @@ def texture_events(texture, per, total, full=True):
             i += 1
             continue
         j = i + 1
-        while j < total and j - i < (8 if full else 4) and at(j)[0] >= floor:
-            j += 1
+        if full:                                            # as long as one glide in level and colour describes it
+            while j < total and j - i < BED_LONGEST and at(j)[0] >= floor:
+                l1, p1 = at(j)
+                n = float(j - i)
+                if any(abs(at(i + k)[0] - (level + (l1 - level) * k / n)) > BED_LEVEL
+                       or abs(at(i + k)[1] - (pitch + (p1 - pitch) * k / n)) > BED_PITCH for k in range(1, j - i)):
+                    break
+                j += 1
+        else:
+            while j < total and j - i < 4 and at(j)[0] >= floor:
+                j += 1
         last_level, last_pitch = at(j - 1)
         out.append((i, j - i, [int(round(pitch))], ((pitch, last_pitch), (level, last_level)) if full else None))
         i = j
@@ -352,7 +384,8 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
         length = min(plen, total - start)
         tracks = {}
         for v in arrangement.voices:
-            text, sounded = _track(v.events, start, length, bar, levels)
+            text, sounded = _track(v.events, start, length, bar, levels,
+                                   shortest=LEAD_SHORTEST if v.role == "lead" else SHORTEST)
             if sounded:
                 tracks[names[id(v)]] = text
         if arrangement.drums:
@@ -382,6 +415,8 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
         instruments[name] = dict(BED if name == "bed" else (FX_SLIDING if full else FX_INSTRUMENTS)[name])
     if "bed" in instruments and not full:
         instruments["bed"]["volume"] = 0.15                     # no levels to follow: keep it in the background
+    elif "bed" in instruments:
+        instruments["bed"].update(BED_SMOOTH)
     moving = full and (levels is not None or bool(extra))
     return dict(([("needs", "CLIo 2.1 (slides and levels)")] if moving else []), **{
         "title": title or grid.title or "untitled",
