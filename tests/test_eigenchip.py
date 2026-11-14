@@ -241,6 +241,47 @@ class MoreVoicesAndExpressionTests(unittest.TestCase):
         self.assertEqual(clio.texture_events(None, 1.0, 10), [])
 
 
+class ExpandTests(unittest.TestCase):
+    """From fewer voices to more: the tune kept, the rest written from the harmony."""
+
+    def tune_of(self, name):
+        from eigenchip.ir import Score
+        full = read(os.path.join(CORPUS, name + ".mid"))
+        return full, quantize(Score([n for n in full.notes if n.channel == 0 and not n.drum],
+                                    full.tempo, full.meter, full.title))
+
+    def test_a_tune_alone_gets_a_bass_chords_and_an_inner_line(self):
+        from eigenchip.arrangers import expand
+        full, alone = self.tune_of("ode_to_joy")
+        arr = arrange(alone, "expand", 4)
+        self.assertEqual([v.role for v in arr.voices], ["lead", "bass", "inner", "chords"])
+        self.assertEqual(arr.notes["tonic"], 0)                                  # C major
+        lead = {(s, p) for s, _d, ps in arr.voice("lead").events for p in ps}
+        self.assertEqual(lead, {(n.start, n.pitch) for n in alone.pitched})      # the tune is untouched
+        key = {(arr.notes["tonic"] + s) % 12 for s in expand.SCALE}
+        for role in ("bass", "inner", "chords"):
+            for _s, _d, pitches in arr.voice(role).events:
+                self.assertTrue(all(p % 12 in key for p in pitches), role)       # nothing written leaves the key
+        roots = [ps[0] % 12 for _s, _d, ps in arr.voice("bass").events]
+        self.assertGreater(roots.count(0) + roots.count(7), len(roots) // 2)     # mostly C and G under this tune
+        for s, _d, ps in arr.voice("inner").events:                              # below the tune, never on it
+            self.assertLess(ps[0], max(p for t, p in lead if t == s))
+        self.assertEqual([v.role for v in arrange(alone, "expand", 2).voices], ["lead", "bass"])
+        clio.validate(clio.to_song(arr, alone))
+        # judged against the piece the tune was taken from: closer in harmony than the tune by itself
+        whole = quantize(full)
+        with_parts = metrics.evaluate(whole, arr, None, {})["chroma"]
+        by_itself = metrics.evaluate(whole, arrange(alone, "skyline", 1), None, {})["chroma"]
+        self.assertGreater(with_parts, by_itself + 0.1)
+
+    def test_a_whole_piece_is_evidence_for_the_chords(self):
+        for name in ("crossing", "long_tune", "ode_to_joy"):
+            whole = quantize(read(os.path.join(CORPUS, name + ".mid")))
+            arr = arrange(whole, "expand", 3)
+            self.assertGreaterEqual(metrics.evaluate(whole, arr, None, {})["chroma"], 0.9, name)
+            self.assertEqual(arr.notes["lead_channel"], 0, name)
+
+
 class MetricTests(unittest.TestCase):
     def test_a_perfect_copy_scores_one(self):
         from eigenchip.ir import Arrangement, Voice

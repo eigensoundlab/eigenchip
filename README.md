@@ -13,8 +13,9 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.8.0). It reads MIDI files and, by transcribing them, sound files (WAV,
-Ogg, MP3, FLAC, M4A...); has three arrangement strategies and four transcription
+Status: early (0.9.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Ogg, MP3, FLAC, M4A...); has three arrangers that reduce and one that expands (a tune
+kept, the other voices written anew from the harmony) and four transcription
 baselines, finds drums, follows the tune through a recording and sorts the other notes into lines, and describes risers, falls,
 swells and impacts apart from the notes, and follows the loudness and the lasting noise of a
 recording; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;

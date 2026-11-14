@@ -8,9 +8,9 @@ shows up in the command line and in the results table.
 """
 from __future__ import annotations
 
-from . import roles, roles_arp, skyline
+from . import expand, roles, roles_arp, skyline
 
-ARRANGERS = {m.NAME: m for m in (skyline, roles, roles_arp)}
+ARRANGERS = {m.NAME: m for m in (skyline, roles, roles_arp, expand)}
 DEFAULT = "roles-arp"
 
 

@@ -3,6 +3,38 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-14 - is a trained transcriber the answer? and an arranger that expands
+
+**The verdict by ear on 0.8.0**: "not yet continuous enough, it still creates more like
+cacophony, but it is a small progress."
+
+**Basic Pitch on the two recordings.** Spotify's Basic Pitch (0.4.0, the ONNX model,
+default thresholds) was put in place of the `nmf` reader, with everything after it
+unchanged. Orchestral piece, harmony / bass / loudness / movement: 0.67 / 0.73 / 0.77 /
+0.23 against 0.73 / 0.77 / 0.88 / 0.41 with our own reader; ambient piece 0.47 / 0.48 /
+0.62 / 0.31 against 0.63 / 0.64 / 0.79 / 0.40. Its lead for the orchestral piece has the
+same outline as ours (A#3 ... C4 D#4 ... A4 C5 A#4) with more stepwise detail, one far
+leap, and more repeated notes (36 of 66 moves). So this model is not a shortcut here;
+it does confirm the outline of the tune from an independent side. Basic Pitch is a
+small, instrument-agnostic model; the published results put the large multi-instrument
+models (MT3, YourMT3+) well above it on mixed music. Those were not tried: they are far
+too large for the browser and need a GPU to be pleasant.
+
+**Where the cacophony may come from.** If the lead has the right outline, what clashes
+is most likely everything else: inner lines and arpeggios played from a transcription
+that is least reliable exactly there.
+
+**`expand`.** So an arranger that does not play those notes at all: the tune, and parts
+written from the chords the notes are evidence for. On the orchestral piece it finds
+B flat, and a bass G, E flat, B flat, F - the same roots the abandoned "bass by
+prominence" had found from the sound. Sound against sound it scores far lower (0.54 /
+0.44 / 0.70 / 0.20), as it must: it plays what was not played. Whether it is more
+*musical* is for ears. On the corpus, see the changelog.
+
+**The same thing for a composer.** A tune alone, expanded: *Ode to Joy* gets C and G
+with a D minor before the cadence. That is the "from fewer voices to more" the author
+asked about, in its plainest form.
+
 ## 2026-11-14 - the janky tune, and the bed
 
 **The verdict by ear on 0.7.0**: "close - but the melody is too janky"; perhaps "an even

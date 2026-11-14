@@ -6,7 +6,7 @@
 <title>eigenchip workbench</title>
 <meta name="description" content="Reduce a sound or MIDI file to a few chip voices, in your browser. See what was heard, what was kept, and hear both.">
 <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=0.8.0">
+<link rel="stylesheet" href="app.css?v=0.9.0">
 </head>
 <body>
 <header class="top">
@@ -72,6 +72,7 @@
         <option value="roles-arp">roles-arp</option>
         <option value="roles">roles</option>
         <option value="skyline">skyline</option>
+        <option value="expand">expand (tune kept, the rest written anew)</option>
       </select>
       for
       <select id="voices" aria-label="Number of pitched voices" title="Three is what a classic sound chip has. More voices keep more of a dense piece."><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select>
@@ -157,6 +158,6 @@
   <a href="https://github.com/eryxgames/CLIo">CLIo</a>, as it will be in 2.1 (slides and levels in songs).
   Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.8.0"></script>
+<script src="app.js?v=0.9.0"></script>
 </body>
 </html>

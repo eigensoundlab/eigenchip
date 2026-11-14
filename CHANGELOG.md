@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.0 - 2026-11-14
+
+An arranger that goes the other way: from fewer voices to more.
+
+- **`expand`.** The other arrangers reduce: every note they play was in the source. This
+  one keeps one line, the tune, and writes a bass, a chord voice and an inner line anew
+  from the harmony. The key is the major scale holding most of the sound; each half bar
+  gets one of its seven triads, by the best path through them (the notes sounding there
+  speak for a chord that holds them and against one that does not; changing chord costs a
+  little). It serves two cases:
+  - *a tune and nothing else* - a sketch, a melody in the head: it is harmonised;
+  - *a dense recording* - what was heard of the inner parts is the least reliable thing
+    in the chain and, played back, the most disturbing. Here it is only evidence for the
+    chords, and what is played is the tune and clean parts written from them.
+- On the page: *expand* among the arrangers, and a row in the score table.
+
+Measured against the corpus pieces themselves (harmony per beat): a tune alone agrees
+0.69 with its piece, the tune expanded 0.72 - a harmonisation is one of many, not the
+composer's; a whole piece put through `expand` keeps 0.85 of its harmony, against 0.97
+for `roles-arp`, which plays the notes themselves. Seven triads and one key per piece are
+its whole vocabulary: no sevenths, no modulation, no minor dominant.
+
 ## 0.8.0 - 2026-11-14
 
 A steadier tune, and a noise bed that does not click.
