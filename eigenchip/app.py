@@ -80,10 +80,13 @@ class Session:
         return self.facts()
 
     def open_audio(self, samples, rate=22050, title="", transcriber=None, tempo=None, offset=None,
-                   meter=(4, 4), steps_per_beat=4, drums=True, voices=5, progress=None):
+                   meter=(4, 4), steps_per_beat=4, drums=True, voices=5, progress=None,
+                   quality="standard", clean="light", effects=True):
         """Open sound: mono float samples. They are transcribed into notes.
 
-        ``progress(fraction, text)`` is called as the work goes on.
+        ``progress(fraction, text)`` is called as the work goes on.  ``quality``
+        (fast, standard, fine), ``clean`` (off, light, strict) and ``effects``
+        are passed to the reader.
         """
         from .audio import need_numpy
         from .audio.transcribe import DEFAULT as T_DEFAULT
@@ -95,7 +98,8 @@ class Session:
         self.samples = samples
         self.score = score_from_samples(samples, int(rate), transcriber or T_DEFAULT, tempo, offset,
                                         tuple(meter), int(steps_per_beat), {"seconds": len(samples) / float(rate)},
-                                        title, bool(drums), int(voices or 0), progress)
+                                        title, bool(drums), int(voices or 0), progress,
+                                        quality or "standard", clean or "light", bool(effects))
         self.kind, self.truth, self.reference, self.played = "audio", {}, None, None
         self.song = self.grid = None
         return self.facts()
@@ -197,12 +201,19 @@ class Session:
         self.grid, self.song = grid, song
         mean_poly, max_poly = metrics.polyphony(grid)
         pitches = [n.pitch for n in grid.pitched] + [p for v in arr.voices for _s, _d, ps in v.events for p in ps]
+        spb = grid.steps_per_beat
+        effects = [{"kind": e["kind"], "start": round(e["start"] * spb, 2), "end": round(e["end"] * spb, 2),
+                    "low": e["low"], "high": e["high"], "noise": bool(e.get("noise"))}
+                   for e in grid.info.get("effects") or []]
+        pitches += [int(round(e[k])) for e in effects if e["kind"] != "impact" for k in ("low", "high")]
         seq = song.get("sequence", [])
         return {
             "arranger": arranger, "title": self.score.title, "kind": self.kind,
             "tempo": round(grid.tempo, 2), "meter": list(grid.meter),
             "steps_per_beat": grid.steps_per_beat, "steps_per_bar": grid.steps_per_bar,
-            "steps": max(grid.length, max((s + d for v in arr.voices for s, d, _p in v.events), default=0)),
+            "steps": max([grid.length] + [s + d for v in arr.voices for s, d, _p in v.events]
+                         + [int(e["end"]) + 1 for e in effects]),
+            "effects": effects,
             "step_seconds": 60.0 / grid.tempo / grid.steps_per_beat,
             "offset": float(self.score.info.get("offset", 0.0) or 0.0) if self.kind == "audio" else 0.0,
             "source": [[n.start, n.dur, n.pitch, n.channel] for n in grid.pitched],

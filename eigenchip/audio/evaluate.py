@@ -81,6 +81,31 @@ def drum_scores(ref, est, tolerance=0.05):
     return {"precision": p, "recall": r, "f1": f, "hits": n_est, "true_hits": n_ref}
 
 
+def effect_scores(ref, est):
+    """Compare effects ``[{"kind", "start", "end", ...}, ...]`` (seconds) with the ones that were put in.
+
+    A sweep or a swell counts as found when one of the same kind covers at
+    least a third of it; an impact when one starts within 0.3 s.
+    """
+    used, by_kind = set(), {}
+    for r in ref:
+        row = by_kind.setdefault(r["kind"], {"true": 0, "found": 0})
+        row["true"] += 1
+        for i, e in enumerate(est):
+            if i in used or e["kind"] != r["kind"]:
+                continue
+            if r["kind"] == "impact":
+                ok = abs(e["start"] - r["start"]) <= 0.3
+            else:
+                ok = min(r["end"], e["end"]) - max(r["start"], e["start"]) >= (r["end"] - r["start"]) / 3.0
+            if ok:
+                used.add(i)
+                row["found"] += 1
+                break
+    found = sum(row["found"] for row in by_kind.values())
+    return {"true": len(ref), "found": found, "reported": len(est), "wrong": len(est) - found, "kinds": by_kind}
+
+
 def tempo_verdict(estimated, true, tolerance=0.02):
     """'ok', 'double', 'half', 'triple', 'third' or 'wrong'."""
     for label, ratio in (("ok", 1.0), ("double", 2.0), ("half", 0.5), ("triple", 3.0), ("third", 1 / 3.0),

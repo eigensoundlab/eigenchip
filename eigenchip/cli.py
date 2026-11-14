@@ -41,13 +41,21 @@ def _read(args):
         meter = (int(num), int(den or 4))
     score = read(args.input, transcriber=getattr(args, "transcriber", None), tempo=getattr(args, "tempo", None),
                  offset=getattr(args, "offset", None), meter=meter,
-                 drums=False if getattr(args, "no_drums", False) else None, voices=getattr(args, "lines", None))
+                 drums=False if getattr(args, "no_drums", False) else None, voices=getattr(args, "lines", None),
+                 quality=getattr(args, "quality", None), clean=getattr(args, "clean", None),
+                 effects=False if getattr(args, "no_effects", False) else None)
     if score.info.get("source") == "audio":
         info = score.info
         print("transcribed with '%s': %d notes and %d drum hits, tempo %.1f bpm (%s), first beat at %.2f s" % (
             info.get("transcriber"), sum(1 for n in score.notes if not n.drum), info.get("drum_hits", 0),
             score.tempo, "given" if info.get("tempo_given") else "estimated", info.get("offset", 0.0)),
             file=sys.stderr)
+        if info.get("cleaned_away"):
+            print("cleaning (%s) removed %d notes" % (info.get("clean"), info["cleaned_away"]), file=sys.stderr)
+        if info.get("effects"):
+            kinds = [e["kind"] for e in info["effects"]]
+            print("effects: " + ", ".join("%d %s%s" % (kinds.count(k), k, "" if kinds.count(k) == 1 else "s")
+                                          for k in ("riser", "fall", "swell", "impact") if k in kinds), file=sys.stderr)
         if not info.get("tempo_given") and info.get("grid_agreement", 1.0) < 0.6:
             print("warning: the notes do not sit well on a grid at this tempo (agreement %.2f). "
                   "If it sounds wrong, give --tempo." % info["grid_agreement"], file=sys.stderr)
@@ -166,6 +174,14 @@ def main(argv=None):
         g.add_argument("--no-drums", action="store_true", help="do not look for kick, snare and hi-hat")
         g.add_argument("--lines", type=int, metavar="N",
                        help="sort the notes into up to N lines (default 5; 0 leaves them on one channel)")
+        g.add_argument("--quality", choices=("fast", "standard", "fine"),
+                       help="how closely to listen: fast is about twice as quick and a little worse, "
+                            "fine about three times slower and a little better (default standard)")
+        g.add_argument("--clean", choices=("off", "light", "strict"),
+                       help="how hard to tidy the notes: light removes likely mistakes, strict also faint and "
+                            "very short notes, at the cost of some real ones (default light)")
+        g.add_argument("--no-effects", action="store_true",
+                       help="do not look for risers, falls, swells and impacts")
 
     def common(p):
         p.add_argument("input")

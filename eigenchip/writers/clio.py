@@ -78,16 +78,74 @@ def _drum_track(drums, start, length, bar):
     return " ".join(tokens), bool(by_step)
 
 
+# Sounds that are not notes, as far as a note list can say them. The song format has no pitch
+# slide, so a sweep becomes a staircase of short notes; an envelope whose attack outlasts the
+# note gives the grow-and-stop of a reversed sound.
+FX_INSTRUMENTS = {
+    "fx": {"wave": "saw", "attack": 0.005, "decay": 0.05, "sustain": 0.8, "release": 0.03, "gate": 1.0,
+           "volume": 0.16},
+    "air": {"wave": "noise", "attack": 0.01, "decay": 0.05, "sustain": 0.8, "release": 0.04, "gate": 1.0,
+            "volume": 0.18},
+    "swell": {"wave": "soft", "attack": 2.0, "decay": 0.05, "sustain": 1.0, "release": 0.02, "gate": 1.0,
+              "volume": 0.6},
+    "hiss": {"wave": "noise", "attack": 2.0, "decay": 0.05, "sustain": 1.0, "release": 0.02, "gate": 1.0,
+             "volume": 0.5},
+    "boom": {"wave": "triangle", "attack": 0.002, "decay": 1.2, "sustain": 0.0, "release": 0.2, "gate": 1.0,
+             "volume": 0.7},
+}
+
+
+def effect_tracks(effects, steps_per_beat):
+    """``{track name: events}`` for the effects of a piece (times in beats, as the audio reader leaves them)."""
+    cells = {}                                              # track -> {step: (pitch, which effect)}
+    for i, e in enumerate(sorted(effects or [], key=lambda e: e["start"])):
+        a = int(round(e["start"] * steps_per_beat))
+        b = max(a + 1, int(round(e["end"] * steps_per_beat)))
+        kind, noisy = e["kind"], bool(e.get("noise"))
+        if kind in ("riser", "fall"):
+            track = "air" if noisy else "fx"
+            lo, hi = (e["low"], e["high"]) if kind == "riser" else (e["high"], e["low"])
+            path = [lo + (hi - lo) * (k + 0.5) / (b - a) for k in range(b - a)]
+        elif kind == "swell":
+            track, path = ("hiss" if noisy else "swell"), [e["low"]] * (b - a)
+        elif kind == "impact":
+            track, path = "boom", [33] * max(b - a, 2 * steps_per_beat)
+        else:
+            continue
+        taken = cells.setdefault(track, {})
+        for k, pitch in enumerate(path):
+            taken.setdefault(a + k, (int(min(108, max(24, round(pitch)))), i))
+    out = {}
+    for track, taken in cells.items():
+        events = []
+        for step in sorted(taken):
+            pitch, which = taken[step]
+            last = events[-1] if events else None
+            if last and last[0] + last[1] == step and last[2] == [pitch] and last[3] == which:
+                last[1] += 1
+            else:
+                events.append([step, 1, [pitch], which])
+        out[track] = [(s0, d, p) for s0, d, p, _which in events]
+    return out
+
+
 def _label(i):
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     return letters[i] if i < 26 else "%s%d" % (letters[i % 26], i // 26 + 1)
 
 
-def to_song(arrangement, grid, bars_per_pattern=4, title=None):
-    """Arrangement -> CLIo song dict."""
+def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True):
+    """Arrangement -> CLIo song dict.
+
+    With ``effects``, the risers, falls, swells and impacts the audio reader
+    found (``grid.info["effects"]``) are written on tracks of their own, beside
+    the voices of the arrangement.
+    """
     bar = grid.steps_per_bar
     plen = bar * max(1, bars_per_pattern)
+    extra = effect_tracks(grid.info.get("effects"), grid.steps_per_beat) if effects else {}
     total = max([e[0] + e[1] for v in arrangement.voices for e in v.events]
+                + [e[0] + e[1] for events in extra.values() for e in events]
                 + [s + 1 for s, _h in arrangement.drums] + [1])
     total = ((total + bar - 1) // bar) * bar                    # whole bars
     names = {}
@@ -108,6 +166,10 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None):
             text, sounded = _drum_track(arrangement.drums, start, length, bar)
             if sounded:
                 tracks["kit"] = text
+        for name in sorted(extra):
+            text, sounded = _track(extra[name], start, length, bar)
+            if sounded:
+                tracks[name] = text
         if not tracks:                                          # a silent stretch still takes time
             tracks[names[id(arrangement.voices[0])] if arrangement.voices else "lead"] = \
                 _track([], start, length, bar)[0]
@@ -119,6 +181,8 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None):
     instruments = {names[id(v)]: dict(v.instrument or INSTRUMENTS.get(v.role, {})) for v in arrangement.voices}
     if arrangement.drums:
         instruments["kit"] = dict(INSTRUMENTS["kit"])
+    for name in sorted(extra):
+        instruments[name] = dict(FX_INSTRUMENTS[name])
     return {
         "title": title or grid.title or "untitled",
         "source": "eigenchip/%s" % (arrangement.name or "?"),

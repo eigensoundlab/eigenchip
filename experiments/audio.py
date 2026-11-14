@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -24,7 +25,9 @@ sys.path.insert(0, ROOT)
 from eigenchip import __version__, metrics                      # noqa: E402
 from eigenchip.arrangers import arrange                         # noqa: E402
 from eigenchip.audio import analysis, decode, evaluate, synth   # noqa: E402
-from eigenchip.audio.transcribe import TRANSCRIBERS, Spectrum, find_drums, transcribe   # noqa: E402
+from eigenchip.audio.clean import MODES, clean                 # noqa: E402
+from eigenchip.audio.effects import find_effects               # noqa: E402
+from eigenchip.audio.transcribe import QUALITY, TRANSCRIBERS, Spectrum, find_drums, transcribe   # noqa: E402
 from eigenchip.voices import consistency, flatten, separate    # noqa: E402
 from eigenchip.ir import quantize                               # noqa: E402
 from eigenchip.readers import read                              # noqa: E402
@@ -74,7 +77,8 @@ def run(log=None):
     with open(os.path.join(corpus, "manifest.json"), encoding="utf-8") as f:
         manifest = json.load(f)
     out = {"manifest": manifest, "notes": [], "drums": [], "tempo": [], "chain": [], "codecs": [],
-           "kit": [], "voices": [], "deep": []}
+           "kit": [], "voices": [], "deep": [], "quality": [], "clean": [], "effects": [], "false": [],
+           "debris": []}
     kinds = {35: "k", 36: "k", 37: "s", 38: "s", 39: "s", 40: "s"}
     ffmpeg = decode.ffmpeg_path()
     for entry in manifest:
@@ -113,6 +117,20 @@ def run(log=None):
                            melody=melody_recall(score, entry.get("truth"), notes))
                 out["notes"].append(res)
             if colour == "band":
+                for quality in QUALITY:                         # how closely to listen, and what it costs
+                    began = time.time()
+                    notes = [n[:3] for n in transcribe(Spectrum(samples, quality=quality), "nmf")]
+                    res = evaluate.note_scores(truth, notes)
+                    res.update(quality=quality, seconds=time.time() - began, sound=len(samples) / 22050.0)
+                    out["quality"].append(res)
+                for mode in MODES:                              # how hard to tidy
+                    cut = {"restrike": 2.4} if mode == "strict" else {}
+                    res = evaluate.note_scores(truth, [n[:3] for n in clean(transcribe(spec, "nmf", **cut), mode)])
+                    heard = score_from_samples(samples, meter=score.meter, clean=mode, effects=False)
+                    res.update(mode=mode, setting="without drums", melody=metrics.evaluate(
+                        quantize(score), arrange(quantize(heard), "roles-arp"), None,
+                        entry.get("truth"))["melody_recall"])
+                    out["clean"].append(res)
                 bpm, phase, conf = analysis.estimate_tempo(spec.flux, spec.flux_fps)
                 out["tempo"].append({"piece": entry["title"], "true": score.tempo, "estimated": bpm,
                                      "verdict": evaluate.tempo_verdict(bpm, score.tempo), "confidence": conf})
@@ -144,7 +162,13 @@ def run(log=None):
                         res.update(piece=entry["title"], colour=kit_colour)
                         out["kit"].append(res)
                     with_drums = Spectrum(synth.render(score, "band", drums=True))
-                    find_drums(with_drums)                      # tells the note cutter where the kicks are
+                    hits = find_drums(with_drums)               # tells the note cutter where the kicks are
+                    for mode in MODES:
+                        cut = {"restrike": 2.4} if mode == "strict" else {}
+                        tidy = clean(transcribe(with_drums, "nmf", **cut), mode, None, hits)
+                        res = evaluate.note_scores(truth, [n[:3] for n in tidy])
+                        res.update(mode=mode, setting="with drums")
+                        out["clean"].append(res)
                     for name in TRANSCRIBERS:
                         for label, sp in (("without drums", spec), ("with drums", with_drums)):
                             res = evaluate.note_scores(truth, [n[:3] for n in transcribe(sp, name)])
@@ -164,7 +188,37 @@ def run(log=None):
                         res = evaluate.note_scores(truth, [n[:3] for n in transcribe(again, "nmf")])
                         res.update(codec=label)
                         out["codecs"].append(res)
+        for colour in ("band", "pluck", "pad"):                 # nothing was put in: is anything reported?
+            est = find_effects(Spectrum(synth.render(score, colour)))
+            out["false"].append({"piece": entry["title"], "colour": colour, "seconds": score.length * 60.0 / score.tempo,
+                                 "reported": [e["kind"] for e in est]})
         say("  %s" % entry["file"])
+    # effects: one of each laid over nothing, over a drone, over a tune with drums
+    by_file = {e["file"]: read(os.path.join(corpus, e["file"])) for e in manifest}
+    demo = synth.EFFECT_DEMO
+    for label, name, colour, method in (("the effects alone", None, "pad", "nmf"),
+                                        ("over Deep drone (pads)", "deep_drone.mid", "pad", "pads"),
+                                        ("over Ode to Joy (band, with drums)", "ode_to_joy.mid", "band", "nmf"),
+                                        ("over Groove (band, with drums)", "groove.mid", "band", "nmf")):
+        score = by_file.get(name)
+        spec = Spectrum(synth.scene(score, demo, colour))
+        est = find_effects(spec)
+        res = evaluate.effect_scores(demo, est)
+        res.update(scene=label)
+        out["effects"].append(res)
+        if score is not None:                                   # and what the effects do to the notes
+            hits = find_drums(spec)
+            heard = transcribe(spec, method)
+            truth = synth.truth(score)
+            tol = 0.25 if method == "pads" else 0.05
+            plain = transcribe(Spectrum(synth.render(score, colour)), method)
+            for setting, notes in (("no effects in the sound", plain), ("effects, not cleaned", heard),
+                                   ("effects, cleaned (light)", clean(heard, "light", est, hits)),
+                                   ("effects, cleaned knowing where they are", clean(heard, "light", demo, hits))):
+                row = evaluate.note_scores(truth, [n[:3] for n in notes], tolerance=tol)
+                row.update(scene=label, setting=setting)
+                out["debris"].append(row)
+        say("  effects %s" % label)
     return out
 
 
@@ -241,6 +295,54 @@ def report(out):
     for r in out["drums"]:
         lines.append("| %s | %s | %s | %s | %s | %s |" % (r["piece"], r["method"], r["setting"],
                                                          cell(r["precision"]), cell(r["recall"]), cell(r["f1"])))
+    lines += ["", "## How closely to listen", "",
+              "The `quality` setting changes the spectrogram: how often it looks (the step), how finely",
+              "it divides the semitone, and how many rounds the template matching runs. `nmf`, tone",
+              "colour `band`, no drums, averaged over the corpus. Time is relative to `standard` on",
+              "the machine that ran this.", "",
+              "| quality | step | bins per semitone | rounds | precision | recall | F1 | time |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    base = sum(r["seconds"] for r in out["quality"] if r["quality"] == "standard") or 1.0
+    for quality, q in QUALITY.items():
+        rows = [r for r in out["quality"] if r["quality"] == quality]
+        lines.append("| %s | %d ms | %d | %d | %s | %s | %s | x %.1f |" % (
+            quality, round(q["hop"] / 22.05), q["bins"], q["passes"], cell(mean(rows, "precision")),
+            cell(mean(rows, "recall")), cell(mean(rows, "f1")), sum(r["seconds"] for r in rows) / base))
+    lines += ["", "## Cleaning", "",
+              "The same transcription (`nmf`, `band`) tidied by each mode. `melody` is the melody of the",
+              "finished `roles-arp` arrangement, with lines found, against the MIDI file.", "",
+              "| setting | mode | precision | recall | F1 | melody |", "| --- | --- | ---: | ---: | ---: | ---: |"]
+    for setting in ("without drums", "with drums"):
+        for mode in MODES:
+            rows = [r for r in out["clean"] if r["mode"] == mode and r["setting"] == setting]
+            lines.append("| %s | %s | %s | %s | %s | %s |" % (
+                "whole corpus, no drums" if setting == "without drums" else "the two pieces with drums", mode,
+                cell(mean(rows, "precision")), cell(mean(rows, "recall")), cell(mean(rows, "f1")),
+                cell(mean(rows, "melody"))))
+    lines += ["", "## Effects", "",
+              "Eight effects - three risers (one of them a hiss), a fall, two swells (one a hiss) and two",
+              "impacts - made by the reference synthesizer and laid over nothing, over a drone, and over",
+              "two tunes with drums. `found` counts those reported with the right kind in the right place;",
+              "`wrong` those reported that were not there (or were named wrongly).", "",
+              "| scene | risers | falls | swells | impacts | found | wrong |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    for r in out["effects"]:
+        kinds = ["%d of %d" % (r["kinds"].get(k, {}).get("found", 0), r["kinds"].get(k, {}).get("true", 0))
+                 for k in ("riser", "fall", "swell", "impact")]
+        lines.append("| %s | %s | %d of %d | %d |" % (r["scene"], " | ".join(kinds), r["found"], r["true"], r["wrong"]))
+    alarms = [k for r in out["false"] for k in r["reported"]]
+    minutes = sum(r["seconds"] for r in out["false"]) / 60.0
+    lines += ["", "False alarms: the plain corpus, where there are no effects, in three tone colours"
+              " (%d renderings, %.0f minutes of sound): %s." % (
+                  len(out["false"]), minutes,
+                  "none reported" if not alarms else ", ".join(
+                      "%d %s%s" % (alarms.count(k), k, "" if alarms.count(k) == 1 else "s")
+                      for k in ("riser", "fall", "swell", "impact") if k in alarms)),
+              "", "What the effects do to the notes underneath, and what cleaning gives back:", "",
+              "| scene | notes read from | precision | recall | F1 |", "| --- | --- | ---: | ---: | ---: |"]
+    for r in out["debris"]:
+        lines.append("| %s | %s | %s | %s | %s |" % (r["scene"], r["setting"], cell(r["precision"]),
+                                                    cell(r["recall"]), cell(r["f1"])))
     if out["codecs"]:
         lines += ["", "## Lossy formats", "",
                   "The `band` audio compressed, decoded again through ffmpeg, and transcribed with `nmf`.", "",

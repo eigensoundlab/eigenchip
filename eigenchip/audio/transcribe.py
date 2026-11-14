@@ -46,6 +46,17 @@ CROSS = (55.0, 80.0)            # Hz: the deep window below, the ordinary one ab
 SHORT_N_FFT, SHORT_HOP = 1024, 256      # the timing window: 46 ms
 
 
+# How much work to spend. "bins" are spectrogram bins per semitone, "hop" the step between
+# frames in samples, "passes" the rounds of template matching. The cost grows roughly with
+# bins / hop. On the test corpus "fast" loses about three points of F1 against "standard"
+# and "fine" gains about one: the picture is not what limits these methods there.
+QUALITY = {
+    "fast": {"bins": 3, "hop": 1024, "passes": 10},
+    "standard": {"bins": 3, "hop": 512, "passes": 16},
+    "fine": {"bins": 4, "hop": 256, "passes": 16},
+}
+
+
 def hz(pitch):
     return 440.0 * 2.0 ** ((pitch - 69) / 12.0)
 
@@ -53,8 +64,14 @@ def hz(pitch):
 class Spectrum:
     """The analysis every transcriber starts from."""
 
-    def __init__(self, samples, rate=RATE, hpss=True, progress=None, deep=True):
+    def __init__(self, samples, rate=RATE, hpss=True, progress=None, deep=True, quality="standard", **override):
         np = need_numpy()
+        if quality not in QUALITY:
+            raise ValueError("Unknown quality '%s'. Choose from: %s" % (quality, ", ".join(QUALITY)))
+        self.quality = dict(QUALITY[quality], name=quality)
+        self.quality.update(override)
+        BPS, HOP = int(self.quality["bins"]), int(self.quality["hop"])
+        self.bps, self.hop = BPS, HOP
         self.np = np
         self.rate = rate
         self.samples = np.asarray(samples, dtype=np.float32)
@@ -84,7 +101,7 @@ class Spectrum:
         self.sigma = np.maximum(0.7, 0.5 * lobe / step)              # width of a peak, in pitch bins
 
         self.tell(0.10, "Setting drums and noise aside")
-        self.mag = analysis.harmonic_part(self.raw, self.fps) if hpss else self.raw
+        self.mag = analysis.harmonic_part(self.raw, self.fps, bins=(17 * BPS // 3) | 1) if hpss else self.raw
         self.short = analysis.stft(self.samples, SHORT_N_FFT, SHORT_HOP, rate=rate)
         self.flux = analysis.flux_of(self.short)
         self.flux_fps = rate / float(SHORT_HOP)
@@ -95,7 +112,7 @@ class Spectrum:
 
     def place(self, pitch, harmonic=1):
         """Where a partial falls, in (fractional) pitch bins."""
-        return BPS * (pitch - LOW + 1) + 12.0 * BPS * math.log(harmonic, 2)
+        return self.bps * (pitch - LOW + 1) + 12.0 * self.bps * math.log(harmonic, 2)
 
     def comb(self, weights, odd_only=False, wide=1.0, unit=False):
         """``[bins, pitches]``: where the partials of each pitch fall, with the given weights.
@@ -350,11 +367,12 @@ def transcribe_peaks(spec, voices=6, share=0.32, **cut):
     return cut_notes(spec, act, **cut)
 
 
-def _nmf_activation(spec, iterations=16, sparsity=0.03, rooted=2.5):
+def _nmf_activation(spec, iterations=None, sparsity=0.03, rooted=2.5):
     """Fixed harmonic templates, activations found by multiplicative updates (KL divergence)."""
     if spec._nmf is not None:
         return spec._nmf
     np = spec.np
+    iterations = int(iterations or spec.quality["passes"])
     colours = [                                             # several tone colours for every pitch
         ([1.0 / h ** 2.2 for h in range(1, 7)], False),     # dull: almost a sine
         ([1.0 / h for h in range(1, 13)], False),           # bright: saw-like
@@ -390,7 +408,7 @@ def _nmf_activation(spec, iterations=16, sparsity=0.03, rooted=2.5):
     return spec._nmf
 
 
-def transcribe_nmf(spec, iterations=16, sparsity=0.03, **cut):
+def transcribe_nmf(spec, iterations=None, sparsity=0.03, **cut):
     """Template matching, read note by note."""
     act = _nmf_activation(spec, iterations, sparsity)
     cut.setdefault("threshold", 0.2)
@@ -400,7 +418,7 @@ def transcribe_nmf(spec, iterations=16, sparsity=0.03, **cut):
     return cut_notes(spec, act, **cut)
 
 
-def transcribe_pads(spec, iterations=16, sparsity=0.03, **cut):
+def transcribe_pads(spec, iterations=None, sparsity=0.03, **cut):
     """Template matching, read slowly: only what lasts counts, and attacks are not looked for."""
     act = _nmf_activation(spec, iterations, sparsity)
     for key, value in (("threshold", 0.25), ("frame_share", 0.2), ("min_seconds", 0.4), ("gap_seconds", 0.5),

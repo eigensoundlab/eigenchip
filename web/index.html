@@ -6,7 +6,7 @@
 <title>eigenchip workbench</title>
 <meta name="description" content="Reduce a sound or MIDI file to a few chip voices, in your browser. See what was heard, what was kept, and hear both.">
 <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=0.4.0">
+<link rel="stylesheet" href="app.css?v=0.5.0">
 </head>
 <body>
 <header class="top">
@@ -44,6 +44,11 @@
           <option value="120">two minutes</option>
           <option value="0">everything</option>
         </select>
+        <select id="quality" aria-label="How closely to listen" title="Quickly takes about half the time and is a little less accurate. Closely takes about three times as long and is a little more accurate.">
+          <option value="standard">at normal detail</option>
+          <option value="fast">quickly, less exactly</option>
+          <option value="fine">closely, more slowly</option>
+        </select>
         with
         <select id="transcriber" aria-label="Transcriber">
           <option value="nmf">nmf</option>
@@ -55,6 +60,12 @@
         <input id="tempo" type="text" inputmode="decimal" size="5" placeholder="auto" aria-label="Tempo in beats per minute; empty to estimate">
         bpm in
         <select id="meter" aria-label="Meter"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select>,
+        tidy the notes
+        <select id="clean" aria-label="How hard to tidy the notes" title="Lightly removes only what is very likely a mistake. Strictly also removes faint and very short notes: fewer wrong notes, but some real ones go too.">
+          <option value="light">lightly</option>
+          <option value="off">not at all</option>
+          <option value="strict">strictly</option>
+        </select>,
         then arrange</span><span id="reading">Arrange</span>
       with
       <select id="arranger" aria-label="Arranger">
@@ -82,6 +93,7 @@
       <label><input type="checkbox" data-layer="bass" checked><i class="key key-bass"></i>Bass</label>
       <label><input type="checkbox" data-layer="third" checked><i class="key key-third"></i><span id="third-name">Chords</span></label>
       <label><input type="checkbox" data-layer="drums" checked><i class="key key-drums"></i>Drums</label>
+      <label id="effects-toggle" hidden><input type="checkbox" data-layer="effects" checked><i class="key key-effects"></i>Sweeps, swells, impacts</label>
     </div>
     <div class="roll" id="roll" tabindex="0" aria-label="Piano roll. Click to move the playhead.">
       <canvas id="keys" aria-hidden="true" hidden></canvas>
@@ -139,6 +151,6 @@
   <p>eigenchip <span id="version"></span> by Daniel Sandner, Apache-2.0. The chip sound is made by the synthesizer of
   <a href="https://github.com/eryxgames/CLIo">CLIo</a> 2.0.0. Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.4.0"></script>
+<script src="app.js?v=0.5.0"></script>
 </body>
 </html>

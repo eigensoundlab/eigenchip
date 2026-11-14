@@ -310,6 +310,119 @@ class DrumsDeepTonesAndLinesTests(unittest.TestCase):
 
 
 @needs_numpy
+class QualityCleaningAndEffectsTests(unittest.TestCase):
+    def test_quality_is_a_choice_between_time_and_detail(self):
+        from eigenchip.audio.transcribe import QUALITY, Spectrum, transcribe
+        samples = synth.render(piece("twinkle"), "band", drums=False)
+        truth = synth.truth(piece("twinkle"))
+        frames = {}
+        for quality in QUALITY:
+            spec = Spectrum(samples, quality=quality)
+            frames[quality] = spec.raw.shape[0]
+            res = evaluate.note_scores(truth, [n[:3] for n in transcribe(spec, "nmf")])
+            self.assertGreaterEqual(res["f1"], 0.85, quality)
+        self.assertLess(frames["fast"], frames["standard"])
+        self.assertLess(frames["standard"], frames["fine"])
+        with self.assertRaisesRegex(ValueError, "fast, standard, fine"):
+            Spectrum(samples, quality="perfect")
+
+    def test_cleaning_rules(self):
+        from eigenchip.audio.clean import clean
+        notes = [(0.0, 0.5, 60, 0.9), (0.53, 0.6, 60, 0.3),         # a held note and the scrap after it
+                 (1.0, 1.5, 64, 0.9), (1.0, 1.4, 65, 0.2),          # a note and its semitone shadow
+                 (2.0, 2.5, 67, 0.8), (3.0, 3.05, 72, 0.2),         # a real note; a blip
+                 (4.0, 4.08, 50, 0.2)]                              # a faint scrap on a drum hit
+        self.assertEqual(clean(notes, "off"), sorted(notes))
+        light = clean(notes, "light", hits=[(4.0, "k")])
+        self.assertEqual([(n[0], n[2]) for n in light], [(0.0, 60), (1.0, 64), (2.0, 67), (3.0, 72)])
+        self.assertAlmostEqual(light[0][1], 0.6)                    # the scrap was joined on, not thrown away
+        strict = clean(notes, "strict", hits=[(4.0, "k")])
+        self.assertEqual([n[2] for n in strict], [60, 64, 67])
+        # what a sweep leaves behind: a staircase along its path, and nothing else is touched
+        riser = {"kind": "riser", "start": 10.0, "end": 12.0, "low": 50.0, "high": 74.0, "noise": False}
+        stairs = [(10.0 + 0.2 * i, 10.2 + 0.2 * i, 51 + int(2.4 * i), 0.6) for i in range(10)]
+        tune_under = [(10.0, 11.0, 40, 0.9), (10.5, 10.8, 90, 0.9)]
+        self.assertEqual(clean(stairs + tune_under, "light", effects=[riser]), sorted(tune_under))
+        fall = dict(riser, kind="fall")
+        left = len(clean(stairs, "light", effects=[fall]))          # a fall crosses that staircase, no more
+        self.assertTrue(6 <= left < 10, left)
+        with self.assertRaisesRegex(ValueError, "off, light, strict"):
+            clean(notes, "spotless")
+
+    def test_effects_are_found_and_not_imagined(self):
+        from eigenchip.audio.effects import find_effects
+        from eigenchip.audio.transcribe import Spectrum
+        demo = synth.EFFECT_DEMO
+        found = find_effects(Spectrum(synth.scene(None, demo)))
+        res = evaluate.effect_scores(demo, found)
+        self.assertEqual((res["found"], res["wrong"]), (8, 0), found)
+        hiss = [e for e in found if e["noise"]]
+        self.assertEqual(sorted(e["kind"] for e in hiss), ["riser", "swell"])
+        first = found[0]
+        self.assertEqual(first["kind"], "riser")
+        self.assertAlmostEqual(first["low"], 48, delta=2.5)
+        self.assertAlmostEqual(first["high"], 84, delta=2.5)
+        # music is not an effect: scale runs, arpeggios, plucked basses, drums
+        for name, colour in (("bach_prelude", "pluck"), ("twinkle", "band"), ("groove", "band"), ("deep_drone", "pad")):
+            self.assertEqual(find_effects(Spectrum(synth.render(piece(name), colour))), [], name)
+        # over a tune most are still found, and few invented
+        over = evaluate.effect_scores(demo, find_effects(Spectrum(synth.scene(piece("groove"), demo, "band"))))
+        self.assertGreaterEqual(over["found"], 6)
+        self.assertLessEqual(over["wrong"], 2)
+        self.assertEqual(evaluate.effect_scores(demo, [])["found"], 0)
+
+    def test_the_reader_keeps_effects_apart_and_the_song_plays_them(self):
+        from eigenchip.readers.audio import score_from_samples
+        drone = piece("deep_drone")
+        samples = synth.scene(drone, synth.EFFECT_DEMO, "pad")
+        heard = score_from_samples(samples, transcriber="pads", tempo=drone.tempo, quality="fast")
+        info = heard.info
+        self.assertEqual((info["quality"], info["clean"]), ("fast", "light"))
+        kinds = [e["kind"] for e in info["effects"]]
+        self.assertGreaterEqual(len(kinds), 5)
+        self.assertIn("riser", kinds)
+        beat = 60.0 / heard.tempo
+        riser = [e for e in info["effects"] if e["kind"] == "riser"][0]
+        self.assertAlmostEqual(riser["end"] * beat + info["offset"], 5.0, delta=0.4)    # stored in beats
+        self.assertGreater(info["cleaned_away"], 0)
+        untidy = score_from_samples(samples, transcriber="pads", tempo=drone.tempo, clean="off", effects=False)
+        self.assertEqual((untidy.info["effects"], untidy.info["cleaned_away"]), ([], 0))
+        self.assertGreater(len(untidy.notes), len(heard.notes))
+        grid = quantize(heard)
+        self.assertEqual(grid.info["effects"], info["effects"])
+        song = clio.to_song(arrange(grid, "roles", 3), grid)
+        self.assertEqual(clio.validate(song), [])
+        self.assertIn("fx", song["instruments"])
+        self.assertEqual(song["instruments"]["fx"], clio.FX_INSTRUMENTS["fx"])
+        self.assertTrue(any("fx" in tracks for tracks in song["patterns"].values()))
+        bare = clio.to_song(arrange(grid, "roles", 3), grid, effects=False)
+        self.assertNotIn("fx", bare["instruments"])
+
+    def test_effect_tracks(self):
+        tracks = clio.effect_tracks([
+            {"kind": "riser", "start": 0.0, "end": 2.0, "low": 60.0, "high": 68.0, "noise": False},
+            {"kind": "fall", "start": 1.5, "end": 3.0, "low": 60.0, "high": 72.0, "noise": False},   # overlaps: waits
+            {"kind": "riser", "start": 4.0, "end": 5.0, "low": 70.0, "high": 90.0, "noise": True},
+            {"kind": "swell", "start": 6.0, "end": 8.0, "low": 57.2, "high": 57.2, "noise": False},
+            {"kind": "impact", "start": 8.0, "end": 8.25, "low": 33.0, "high": 33.0, "noise": False},
+        ], 4)
+        self.assertEqual(sorted(tracks), ["air", "boom", "fx", "swell"])
+        fx = tracks["fx"]
+        self.assertEqual(fx[0][0], 0)
+        pitches = [p[0] for s, d, p in fx if s < 8]
+        self.assertEqual(pitches, sorted(pitches))                  # the riser climbs
+        self.assertEqual((pitches[0], pitches[-1]), (60, 68))
+        later = [p[0] for s, d, p in fx if s >= 8]
+        self.assertEqual(later, sorted(later, reverse=True))        # then the fall, from where it is by then
+        for events in tracks.values():                              # nothing overlaps on a track
+            for (s0, d0, _p0), (s1, _d1, _p1) in zip(events, events[1:]):
+                self.assertLessEqual(s0 + d0, s1)
+        self.assertEqual(tracks["swell"], [(24, 8, [57])])          # one note, not eight
+        self.assertEqual(tracks["boom"], [(32, 8, [33])])           # an impact rings for two beats at least
+        self.assertEqual(clio.effect_tracks(None, 4), {})
+
+
+@needs_numpy
 class ReaderTests(unittest.TestCase):
     def wav(self, name, **kw):
         score = piece(name)
@@ -347,7 +460,8 @@ class ReaderTests(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             self.assertEqual(cli.main(["transcribe", path, "-o", mid, "--transcriber", "peaks"]), 0)
-            self.assertEqual(cli.main(["convert", path, "-o", song, "--tempo", "100"]), 0)
+            self.assertEqual(cli.main(["convert", path, "-o", song, "--tempo", "100", "--quality", "fast",
+                                       "--clean", "strict", "--no-effects"]), 0)
             self.assertEqual(cli.main(["info", path]), 0)
             self.assertEqual(cli.main(["transcribe", os.path.join(CORPUS, "waltz.mid")]), 1)
         self.assertIn("transcribed with 'peaks'", err.getvalue())

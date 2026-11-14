@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.0 - 2026-11-14
+
+A choice of how closely to listen, a tidier transcription, and the sounds that are not notes.
+
+- **Quality.** `--quality fast | standard | fine` (and the same choice on the page) sets
+  how often the spectrogram looks, how finely it divides the semitone and how long the
+  template matching runs. Measured on the corpus: `fast` about half the time for two
+  points of F1, `fine` about three times the time for one point.
+- **Cleaning.** `eigenchip.audio.clean` tidies a transcription before the beat is found:
+  `light` (the default) joins scraps to the note they belong to and removes semitone
+  shadows, short faint notes on drum hits, and what a sweep left behind; `strict` also
+  removes faint short notes and limits the crowd. `--clean off` gives the old behaviour.
+- **Effects.** `eigenchip.audio.effects.find_effects` reports risers, falls, swells and
+  impacts with their times, pitch range and whether they are tone or hiss. The audio
+  reader keeps them in `score.info["effects"]`, apart from the notes, and removes the
+  debris they leave in the transcription.
+- **Effects in the song.** The CLIo writer puts them on tracks of their own (`fx`, `air`,
+  `swell`, `hiss`, `boom`) using only what CLIo 2.0 songs can do: staircases for sweeps,
+  a slow attack for swells, a long decay for impacts. `to_song(..., effects=False)` and
+  `--no-effects` leave them out.
+- Reference synthesizer: `synth.effect` and `synth.scene` make effects with known
+  answers and lay them over a piece; `evaluate.effect_scores` compares.
+- Workbench: selects for detail and tidying; effects drawn on the piano roll as slanted
+  lines, wedges and strokes, with their own legend entry and tooltips; the summary says
+  what was found and how many notes tidying removed.
+- Results: new tables for quality, cleaning and effects.
+
+Changed numbers: the audio reader now cleans lightly and looks for effects by default,
+so whole-chain figures move by a point at most (`nmf` is unchanged; the melody kept from
+`peaks` goes from 0.69 to 0.68). The detector's rules were fitted to the synthetic
+effects it is tested on.
+
 ## 0.4.0 - 2026-11-13
 
 Deeper, with drums and lines - and a page that says what it is doing.

@@ -119,6 +119,29 @@ class SessionTests(unittest.TestCase):
             s.open_audio(np.zeros(0, dtype=np.float32))
 
     @needs_numpy
+    @unittest.skipIf(np is None, "NumPy is not installed")
+    def test_detail_tidying_and_effects_reach_the_page(self):
+        from eigenchip.audio import synth
+        drone = read(os.path.join(ROOT, "corpus", "deep_drone.mid"))
+        session = Session()
+        facts = session.open_audio(synth.scene(drone, synth.EFFECT_DEMO, "pad"), title="Scene", transcriber="pads",
+                                   tempo=drone.tempo, quality="fast", clean="strict")
+        self.assertEqual((facts["info"]["quality"], facts["info"]["clean"]), ("fast", "strict"))
+        view = json.loads(to_json(session.arrange("roles", 3)))
+        kinds = {e["kind"] for e in view["effects"]}
+        self.assertTrue({"riser", "fall", "swell"} <= kinds, kinds)
+        self.assertGreaterEqual(view["steps"], max(e["end"] for e in view["effects"]))
+        sweeps = [e for e in view["effects"] if e["kind"] == "riser"]
+        self.assertLessEqual(view["pitch_range"][0], min(e["low"] for e in sweeps))
+        self.assertGreaterEqual(view["pitch_range"][1], max(e["high"] for e in sweeps) - 0.5)
+        self.assertIn('"fx"', view["song_json"])
+        samples = clio_synth().render_song(session.song)          # the effect tracks are playable
+        self.assertGreater(max(abs(x) for x in samples), 0.05)
+        quiet = Session()
+        quiet.open_audio(synth.scene(drone, synth.EFFECT_DEMO, "pad"), transcriber="pads", tempo=drone.tempo,
+                         quality="fast", effects=False)
+        self.assertEqual(json.loads(to_json(quiet.arrange("roles", 3)))["effects"], [])
+
     def test_midi_can_be_heard_on_the_test_synth(self):
         s = Session()
         s.open_midi(corpus_bytes("twinkle"))

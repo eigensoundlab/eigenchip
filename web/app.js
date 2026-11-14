@@ -168,7 +168,8 @@ async function decode(buffer, limitSeconds) {
 function listening() {
   const tempo = parseFloat($("tempo").value.replace(",", "."));
   const [num, den] = $("meter").value.split("/").map(Number);
-  return { transcriber: $("transcriber").value, tempo: tempo > 20 && tempo < 400 ? tempo : null, meter: [num, den] };
+  return { transcriber: $("transcriber").value, tempo: tempo > 20 && tempo < 400 ? tempo : null, meter: [num, den],
+    quality: $("quality").value, clean: $("clean").value };
 }
 
 async function open() {
@@ -271,6 +272,7 @@ function show() {
   $("findings").hidden = false;
   $("source-name").textContent = v.kind === "audio" ? "Heard" : "In the file";
   $("played-toggle").hidden = !v.played;
+  $("effects-toggle").hidden = !(v.effects || []).length;
   $("third-name").textContent = v.voices.some((x) => x.role === "chords") ? "Chords" : "Inner voice";
   draw();
   table();
@@ -284,6 +286,14 @@ function show() {
     parts.push(`Heard ${b(f.notes)} notes between ${f.lowest.toUpperCase()} and ${f.highest.toUpperCase()}, at ${b(v.tempo)} bpm ` +
       `(${info.tempo_given ? "as given" : "estimated"}), with the first beat at ${Number(info.offset || 0).toFixed(2)} s.`);
     if (f.drum_hits) parts.push(`It also heard ${b(f.drum_hits)} drum hits.`);
+    const fx = v.effects || [];
+    if (fx.length) {
+      const names = { riser: "riser", fall: "fall", swell: "swell", impact: "impact" };
+      const count = Object.keys(names).map((k) => [fx.filter((e) => e.kind === k).length, names[k]]).filter(([n]) => n)
+        .map(([n, name]) => `${n} ${name}${n === 1 ? "" : "s"}`);
+      parts.push(`Besides notes it found ${b(count.join(", "))}; the chip version plays them on tracks of their own, sweeps as staircases.`);
+    }
+    if (info.cleaned_away) parts.push(`Tidying took out ${b(info.cleaned_away)} notes that looked like mistakes.`);
     if (f.transcription) {
       const t = f.transcription;
       parts.push(`Of the ${b(t.true_notes)} notes really played it found ${b(pct(t.recall))}, and ${b(pct(t.precision))} of what it wrote down is right.`);
@@ -441,6 +451,7 @@ function draw() {
     c.fillStyle = css("--screen-ink");
     for (const [s] of v.drums) c.fillRect(s * px, g.drumY + 9, Math.max(1.5, Math.min(3, px - 1)), 7);
   }
+  if ((v.effects || []).length && layerOn("effects")) drawEffects(c, v, g, px);
   $("notes").setAttribute("aria-label", `Piano roll of ${v.title}: ${v.source.length} source notes and ${v.voices.length} chip voices.`);
   playhead();
 }
@@ -452,6 +463,48 @@ function where(start, dur) {
   const beats = dur / v.steps_per_beat;
   const len = Number.isInteger(beats) ? beats : beats.toFixed(2).replace(/0+$/, "");
   return `bar ${bar}, beat ${beat}, ${len} beat${beats === 1 ? "" : "s"} long`;
+}
+
+// Sounds that are not notes are drawn as shapes, so that they are never mistaken for bars:
+// a sweep is a slanted line, a swell a growing wedge, an impact a stroke with a fading tail.
+function drawEffects(c, v, g, px) {
+  const colour = css("--effect");
+  const yMid = (pitch) => g.axisH + (g.hi - pitch) * g.rowH + g.rowH / 2;
+  const floor = g.axisH + (g.hi - g.lo + 1) * g.rowH;
+  const names = { riser: "Riser", fall: "Fall", swell: "Swell", impact: "Impact" };
+  c.save();
+  c.strokeStyle = c.fillStyle = colour;
+  c.lineCap = "round";
+  for (const e of v.effects) {
+    const x0 = e.start * px, x1 = Math.max(x0 + 3, e.end * px);
+    let box;
+    c.setLineDash(e.noise ? [5, 4] : []);
+    if (e.kind === "riser" || e.kind === "fall") {
+      const [from, to] = e.kind === "riser" ? [e.low, e.high] : [e.high, e.low];
+      c.lineWidth = 2.5;
+      c.beginPath(); c.moveTo(x0, yMid(from)); c.lineTo(x1, yMid(to)); c.stroke();
+      c.setLineDash([]);
+      c.beginPath(); c.arc(x1, yMid(to), 3.5, 0, 2 * Math.PI); c.fill();
+      box = { x: x0, y: Math.min(yMid(from), yMid(to)) - 4, w: x1 - x0, h: Math.abs(yMid(from) - yMid(to)) + 8, pitch: Math.round(to) };
+    } else if (e.kind === "swell") {
+      const ym = yMid(e.low), half = Math.max(5, g.rowH * 1.4);
+      c.beginPath(); c.moveTo(x0, ym); c.lineTo(x1, ym - half); c.lineTo(x1, ym + half); c.closePath();
+      c.lineWidth = 1.5;
+      if (e.noise) c.stroke(); else { c.globalAlpha = 0.7; c.fill(); c.globalAlpha = 1; }
+      box = { x: x0, y: ym - half, w: x1 - x0, h: 2 * half, pitch: Math.round(e.low) };
+    } else {
+      const tall = Math.min(floor - g.axisH, Math.max(18, g.rowH * 5));
+      c.setLineDash([]);
+      c.globalAlpha = 0.7;
+      c.beginPath(); c.moveTo(x0, floor - tall); c.lineTo(x1, floor); c.lineTo(x0, floor); c.closePath(); c.fill();
+      c.globalAlpha = 1;
+      c.lineWidth = 2;
+      c.beginPath(); c.moveTo(x0, g.axisH + 2); c.lineTo(x0, floor); c.stroke();
+      box = { x: x0, y: floor - tall, w: x1 - x0, h: tall, pitch: null };
+    }
+    state.hits.push({ ...box, start: e.start, dur: e.end - e.start, label: names[e.kind] + (e.noise ? " (hiss)" : "") });
+  }
+  c.restore();
 }
 
 function hover(event) {
@@ -468,7 +521,7 @@ function hover(event) {
   tip.innerHTML = "";
   const strong = document.createElement("b");
   strong.textContent = found.label;
-  tip.append(strong, ` ${pitchName(found.pitch)}, ${where(found.start, found.dur)}`);
+  tip.append(strong, ` ${found.pitch === null ? "" : pitchName(found.pitch) + ", "}${where(found.start, found.dur)}`);
   tip.hidden = false;
   const host = tip.parentElement.getBoundingClientRect();
   const left = Math.min(event.clientX - host.left + 14, host.width - tip.offsetWidth - 8);

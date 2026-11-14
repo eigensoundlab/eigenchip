@@ -13,9 +13,10 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.4.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Status: early (0.5.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangement strategies and four transcription
-baselines, finds drums and sorts transcribed notes into lines; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
+baselines, finds drums, sorts transcribed notes into lines, and describes risers, falls,
+swells and impacts apart from the notes; writes songs for the [CLIo](https://github.com/eryxgames/CLIo) game engine;
 and scores every stage on a small corpus. Python 3.8+. The MIDI path has no dependencies;
 the audio path needs NumPy, and ffmpeg for anything but WAV.
 
@@ -65,9 +66,24 @@ Around the transcriber:
 - **Lines.** A transcription is one heap of notes. They are sorted into up to five lines
   by pitch and continuity, so that arrangers have something like channels again
   (`--lines 0` leaves them on one channel).
+- **Effects.** Four gestures of film and ambient music are looked for directly and kept
+  apart from the notes: a *riser* (a pitch or a hiss sliding up), a *fall* (the same,
+  down), a *swell* (a sound that grows and is cut off, like one played backwards) and an
+  *impact* (a crack with a long low tail). The CLIo song plays them on tracks of their
+  own: a sweep as a staircase of short notes, because the song format has no pitch
+  slide; a swell as one note with a slow attack; an impact as a low note that dies away.
+  `--no-effects` turns this off.
+
+Two settings trade one thing for another:
+
+| Setting | Choices | What you trade |
+| --- | --- | --- |
+| `--quality` | `fast`, `standard`, `fine` | Time for detail. On the corpus `fast` takes about half the time and loses two points of F1; `fine` takes about three times as long and gains one. `fine` mostly buys precision. |
+| `--clean` | `off`, `light`, `strict` | Stray notes for real ones. `light` removes only what is very likely a mistake: scraps of a held note, a faint copy a semitone beside a note, short faint notes on a drum hit, the staircase a sweep leaves behind. `strict` also removes faint short notes and allows six notes at once: with drums, precision rises from 0.60 to 0.71 and recall falls from 0.85 to 0.74. |
 
 These are plain, readable baselines, not the state of the art. Instruments are not
-recognised, the meter is assumed, pitch glides and noise sweeps are not followed at all.
+recognised, the meter is assumed, and the effect detector was fitted to clean synthetic
+effects: expect it to miss and to misname things in a real mix.
 Read [RESULTS-audio.md](RESULTS-audio.md) before trusting it.
 
 ### In the browser
@@ -76,7 +92,9 @@ Read [RESULTS-audio.md](RESULTS-audio.md) before trusting it.
 or sound file (or take a corpus piece, as written or played by the test synthesizer), and
 it draws the notes it found against the voices the chip plays, lets you switch between
 the original and the chip version while it plays, scores every arranger, and offers the
-CLIo song, the transcription and the chip sound for download. Nothing is uploaded: the
+CLIo song, the transcription and the chip sound for download. For sound files you choose
+how closely it listens and how hard it tidies the notes; sweeps, swells and impacts are
+drawn on the roll as slanted lines, wedges and strokes. Nothing is uploaded: the
 analysis is done by Python compiled to WebAssembly ([Pyodide](https://pyodide.org)) on
 your own machine. That makes listening slow: transcribing a sound file takes about as
 long as the music lasts, where the command line needs a couple of seconds.
@@ -147,6 +165,17 @@ same corpus:
   shreds a swelling pad into fragments; on ordinary music it is useless by design.
 - Tempo is right on eight pieces of ten, doubled on one, and wrong on the drone piece,
   which has no pulse to find.
+- Effects wreck a transcription and can be taken out again. Laid over a piece, eight
+  effects cut the precision of the notes roughly in half (0.90 to 0.40 on the drone, 0.59
+  to 0.32 on a tune with drums), because a sweep is read as a spray of short notes. Found
+  as effects and cleaned away, most of that comes back (0.74 and 0.63). The detector
+  finds all eight alone, five to seven of eight over music, and reported nothing in
+  eleven minutes of the plain corpus - all of it on synthetic effects.
+- Listening more closely helps little: three times the work buys one point of F1.
+- Cleaning does not rescue the lines. Light cleaning is safe and helps mostly where there
+  are drums; strict cleaning trades recall for precision one for one. Neither changes
+  how much of the melody the arranger keeps (0.72, 0.72, 0.70): the mistake that breaks
+  lines is a held note cut in two, and in a note list that looks like a repeated note.
 - Sorting notes into lines works on clean notes and barely matters on transcribed ones.
   With the channels of the MIDI files thrown away, the lead voice keeps 0.77 of the
   melody; with lines found again, 0.85; with the true channels, 0.88. From audio the
@@ -196,10 +225,14 @@ experiment.
 - **Timbre**: choosing waveform and envelope from the source instrument.
 - **Rhythm**: grids for triplets and swing; a measure taken against the unquantised source.
 - **Lines that survive a noisy transcription**: the separator works on clean notes and
-  not yet on heard ones; cleaning up fragments and ghosts first is the likely way in.
-- **Soundscapes**: pitch glides (risers), noise sweeps and slowly changing timbre have
-  no notes to transcribe. They need their own description - a contour, a noise level -
-  and a target format that can play one.
+  not yet on heard ones. Cleaning the note list did not help; telling a held note from a
+  repeated one has to happen earlier, where the sound is still at hand.
+- **Effects in real mixes**: the detector knows four clean gestures. Real risers are
+  layered, filtered and drowned in reverb; sweeps in the bass are not seen at all; and an
+  impact over a rhythm section is hard to tell from a kick and a bass note together.
+- **A target that can slide**: CLIo songs have no pitch slide or volume curve, so sweeps
+  become staircases. A slide in the song format would let effects be played as they are.
+- **Slowly changing timbre**: filter sweeps and evolving pads still have no description.
 - **Drums**: missed hits when a hat and a snare coincide; toms and cymbals; removing
   the drums from the sound before the pitched analysis instead of working around them.
 - **Harder audio**: recordings of real instruments, reverberation, detuning; a trained
