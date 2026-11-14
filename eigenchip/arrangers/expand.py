@@ -26,6 +26,8 @@ below the tune.
 """
 from __future__ import annotations
 
+import re
+
 from ..ir import Arrangement
 from . import roles
 from .common import line, map_drums, voice
@@ -85,12 +87,72 @@ def chords(notes, tune, total, window, tonic):
     return [tuple((tonic + p) % 12 for p in TRIADS[d]) for d in path]
 
 
+NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
+KINDS = {"": (4, 7), "m": (3, 7), "dim": (3, 6), "7": (4, 7, 10), "m7": (3, 7, 10), "maj7": (4, 7, 11)}
+_CHORD = re.compile(r"^([A-Ga-g])([#b]?)(maj7|m7|dim|m|7)?$")
+
+# How the written parts move.  ``bass``: held / beats (root and fifth by beats) / eighths / bar (once a bar).
+# ``arp``: steps per note of the chord voice.  ``drums``: one bar of sixteen steps, used in four-four; other meters
+# get a kick on the first beat and a hat on the others.
+STYLES = {
+    "plain": {"about": "Held bass, rolling chords, no drums.", "bass": "held", "arp": 1, "drums": ""},
+    "ballad": {"about": "Long bass, slow chords, a quiet hat.", "bass": "held", "arp": 2, "drums": "....h.......h..."},
+    "march": {"about": "Bass on every beat, root and fifth; snare on two and four.", "bass": "beats", "arp": 2,
+              "drums": "k...s...k...s..."},
+    "drive": {"about": "Bass in eighths, busy hats.", "bass": "eighths", "arp": 1, "drums": "k.h.s.h.k.hks.h."},
+    "waltz": {"about": "Bass once a bar, the chord on every beat.", "bass": "bar", "arp": 4, "drums": ""},
+}
+
+
+def chord_name(chord):
+    """('C', 'E', 'G' as pitch classes, root first) -> 'C'."""
+    shape = tuple(sorted((pc - chord[0]) % 12 for pc in chord[1:]))
+    kind = next((k for k, v in KINDS.items() if v == shape), "")
+    return NAMES[chord[0]] + kind
+
+
+def parse_chord(name):
+    """'Am' -> pitch classes, root first; None for '-' or nothing (leave it to the arranger)."""
+    name = (name or "").strip()
+    if name in ("", "-", "?"):
+        return None
+    found = _CHORD.match(name)
+    if not found:
+        raise ValueError("'%s' is not a chord I know. Write C, Am, G7, Dm7, Fmaj7 or Bdim; '-' to leave one to me." % name)
+    root = ("C D EF G A B".index(found.group(1).upper()) + {"#": 1, "b": -1, "": 0}[found.group(2)]) % 12
+    return (root,) + tuple((root + step) % 12 for step in KINDS[found.group(3) or ""])
+
+
+def parse_chords(text, per_bar=2):
+    """'C | G | Am F | -' -> one entry per half bar (None where the arranger is to choose)."""
+    out = []
+    for bar in (text or "").split("|"):
+        names = bar.split()
+        if len(names) > per_bar:
+            raise ValueError("'%s': at most %d chords in a bar." % (bar.strip(), per_bar))
+        chosen = [parse_chord(n) for n in names] or [None]
+        out += chosen if len(chosen) == per_bar else chosen * per_bar
+    return out
+
+
+def chords_text(path, per_bar=2):
+    bars = []
+    for i in range(0, len(path), per_bar):
+        names = [chord_name(c) for c in path[i:i + per_bar]]
+        bars.append(names[0] if len(set(names)) == 1 else " ".join(names))
+    return " | ".join(bars)
+
+
 def _place(pc, low):
     """The pitch of class ``pc`` at or above ``low``."""
     return low + (pc - low) % 12
 
 
-def arrange(grid, voices=4):
+def arrange(grid, voices=4, style="plain", chords_given=None):
+    """``style`` is one of ``STYLES``; ``chords_given`` as ``parse_chords`` returns them, to overrule the choice."""
+    if style not in STYLES:
+        raise ValueError("Unknown style '%s'. Available: %s" % (style, ", ".join(STYLES)))
+    how = STYLES[style]
     notes = grid.pitched
     if not notes:
         return Arrangement([], map_drums(grid.drums), NAME, {})
@@ -105,7 +167,11 @@ def arrange(grid, voices=4):
     window = max(1, grid.steps_per_bar // 2)
     tonic = key_tonic(notes)
     path = chords(notes, used, total, window, tonic)
-    remarks.update(tonic=tonic, chords=len({c for c in path}), written="bass, chords and inner line are new")
+    for i, given in enumerate(chords_given or []):
+        if given and i < len(path):
+            path[i] = tuple(given)
+    remarks.update(tonic=tonic, chords=len({c for c in path}), written="bass, chords and inner line are new",
+                   style=style, chords_text=chords_text(path))
 
     def runs():
         """(start, steps, chord) with the same chord in neighbouring windows put together, bar by bar."""
@@ -119,13 +185,24 @@ def arrange(grid, voices=4):
         return [r for r in out if r[1] > 0]
 
     busy = len(tune_events) / max(1.0, total / float(grid.steps_per_beat)) >= 0.75      # tune notes per beat
+    beat, bar = grid.steps_per_beat, grid.steps_per_bar
     bass, harmony = [], []
     for start, steps, chord in runs():
-        root = _place(chord[0], 36)                         # C2 and up
-        if busy and steps >= window:                        # a moving tune: the bass marks every half bar
-            for s in range(start, start + steps, window):
-                fifth = s != start and (s // window) % 2 == 1
-                bass.append((s, min(window, start + steps - s), [_place(chord[2], 36) if fifth else root]))
+        root, fifth = _place(chord[0], 36), _place(chord[2], 36)                        # C2 and up
+        end = start + steps
+        if how["bass"] == "beats":                          # root and fifth, beat by beat
+            for k, s in enumerate(range(start, end, beat)):
+                bass.append((s, min(beat, end - s), [fifth if k % 2 else root]))
+        elif how["bass"] == "eighths":                      # the root in eighths, every other one an octave up
+            half = max(1, beat // 2)
+            for k, s in enumerate(range(start, end, half)):
+                bass.append((s, min(half, end - s), [root + 12 if k % 4 == 3 else root]))
+        elif how["bass"] == "bar":                          # once a bar, and let it ring
+            for s in range(start, end, bar):
+                bass.append((s, min(bar, end - s), [root]))
+        elif busy and steps >= window:                      # held, but a moving tune has the bass mark every half bar
+            for s in range(start, end, window):
+                bass.append((s, min(window, end - s), [fifth if s != start and (s // window) % 2 == 1 else root]))
         else:
             bass.append((start, steps, [root]))
         harmony.append((start, steps, sorted(_place(pc, 55) for pc in chord)))          # around middle C
@@ -140,7 +217,14 @@ def arrange(grid, voices=4):
     if voices >= 2:
         out.append(voice("bass", bass))
     if voices >= 3:
-        out.append(voice("chords", harmony))
+        rolling = voice("chords", harmony)
+        rolling.instrument = dict(rolling.instrument, arp=how["arp"])
+        out.append(rolling)
     if voices >= 4 and inner:
         out.insert(2, voice("inner", inner))
-    return Arrangement(out, map_drums(grid.drums), NAME, remarks)
+    drums = map_drums(grid.drums)
+    if not drums and how["drums"]:                          # the source had none: the style's own
+        pattern = how["drums"] if bar == 16 else "".join(
+            ("k" if s == 0 else "h" if s % beat == 0 else ".") for s in range(bar))
+        drums = [(s, [pattern[s % bar]]) for s in range(total) if pattern[s % bar] != "."]
+    return Arrangement(out, drums, NAME, remarks)

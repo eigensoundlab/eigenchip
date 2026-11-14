@@ -45,13 +45,17 @@ def _call(name, payload, blob):
         return to_json(session.open_midi_as_audio(_bytes(blob), a.get("title", ""), a.get("colour", "band"),
                                                   a.get("drums", True), a.get("truth"),
                                                   progress=_progress, **a.get("options", {})))
+    if name == "open_tune":
+        return to_json(session.open_tune(a.get("text", ""), a.get("tempo", 100), tuple(a.get("meter", [4, 4])),
+                                         a.get("title", "A tune")))
     if name == "arrange":
         return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4),
-                                       expression=a.get("expression", "full")))
+                                       expression=a.get("expression", "full"), style=a.get("style", "plain"),
+                                       chords=a.get("chords")))
     if name == "likeness":
         return to_json(session.likeness)
     if name == "chip":
-        return session.chip_wav(clio_synth)
+        return session.chip_wav(clio_synth, a.get("mute") or ())
     if name == "original":
         return session.original_wav(a.get("colour", "band"))
     if name == "midi":

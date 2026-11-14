@@ -80,6 +80,14 @@ class Session:
         self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
 
+    def open_tune(self, text, tempo=100.0, meter=(4, 4), title="A tune"):
+        """Open a tune written as text (``eigenchip/readers/tune.py``): the composer's way in."""
+        from .readers.tune import read_tune
+        score = read_tune(text, tempo, meter, title)
+        self.score, self.truth, self.kind = score, {"melody": 0}, "midi"
+        self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
+        return self.facts()
+
     def open_audio(self, samples, rate=22050, title="", transcriber=None, tempo=None, offset=None,
                    meter=(4, 4), steps_per_beat=4, drums=True, voices=5, progress=None,
                    quality="standard", clean="light", effects=True):
@@ -170,12 +178,17 @@ class Session:
     # ------------------------------------------------------------------ #
     # arranging
     # ------------------------------------------------------------------ #
-    def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4, expression="full"):
-        """Reduce the opened piece. Returns everything the page draws and offers for download.
+    def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4, expression="full",
+                style="plain", chords=None):
+        """Arrange the opened piece. Returns everything the page draws and offers for download.
 
         ``expression`` is ``full`` (levels and slides; the song needs CLIo 2.1)
-        or ``plain`` (one level, sweeps in steps; plays on CLIo 2.0).
+        or ``plain`` (one level, sweeps in steps; plays on CLIo 2.0).  ``style``
+        and ``chords`` (text such as ``"C | G | Am F"``; ``-`` leaves a bar to the
+        arranger) are for ``expand``, which writes parts instead of reducing them.
         """
+        from .arrangers import expand
+        written = {"style": style, "chords_given": expand.parse_chords(chords) if chords else None}
         if self.score is None:
             raise ValueError("Open a file first.")
         grid = quantize(self.score, int(steps_per_beat))
@@ -187,7 +200,7 @@ class Session:
         chosen = None
         table = []
         for name in ARRANGERS:
-            arr = arrange(grid, name, int(voices))
+            arr = arrange(grid, name, int(voices), **(written if name == "expand" else {}))
             song = clio.to_song(arr, grid, int(bars_per_pattern), expression=expression)
             res = metrics.evaluate(judge, arr, song, truth)
             res["compression"] = metrics.evaluate(grid, arr, song)["compression"]
@@ -235,18 +248,28 @@ class Session:
             "scores": table, "truth": dict(truth), "judged_against": against,
             "played": [[n.start, n.dur, n.pitch] for n in judge.pitched] if against == "played" else None,
             "song_json": clio.dumps(song), "song_name": _slug(self.score.title),
+            "instruments": list(song["instruments"]),
+            "chords_text": arr.notes.get("chords_text"), "style": arr.notes.get("style"),
+            "styles": [[name, how["about"]] for name, how in expand.STYLES.items()],
         }
 
     # ------------------------------------------------------------------ #
     # sound and files
     # ------------------------------------------------------------------ #
-    def chip_wav(self, synth):
-        """The arranged song played by CLIo's synthesizer (``engine.audio.synth``), as WAV bytes."""
+    def chip_wav(self, synth, mute=()):
+        """The arranged song played by CLIo's synthesizer (``engine.audio.synth``), as WAV bytes.
+
+        ``mute`` names instruments of the song to leave out (a voice soloed is the others muted).
+        """
         if self.song is None:
             raise ValueError("Arrange the piece first.")
-        samples = synth.render_song(self.song)
-        self.likeness = None
-        if self.samples is not None:                        # there is a sound to compare with: do it now
+        mute = set(mute or ())
+        song = self.song if not mute else dict(self.song, instruments={
+            name: (dict(inst, volume=0.0) if name in mute else inst) for name, inst in self.song["instruments"].items()})
+        samples = synth.render_song(song)
+        if not mute:
+            self.likeness = None
+        if self.samples is not None and not mute:           # there is a sound to compare with: do it now
             try:
                 from .audio import compare
                 rate = getattr(synth, "RATE", 22050)

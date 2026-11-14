@@ -274,6 +274,48 @@ class ExpandTests(unittest.TestCase):
         by_itself = metrics.evaluate(whole, arrange(alone, "skyline", 1), None, {})["chroma"]
         self.assertGreater(with_parts, by_itself + 0.1)
 
+    def test_a_tune_is_written_as_text(self):
+        from eigenchip.readers.tune import read_tune
+        score = read_tune("e4 e4:2 . f#4:.5 eb3:1.5 | [c4 e4]@5:2 - g4>c5:1", tempo=96, meter=(3, 4))
+        got = [(n.start, n.dur, n.pitch) for n in score.notes]
+        self.assertEqual(got, [(0.0, 1.0, 64), (1.0, 2.0, 64), (4.0, 0.5, 66), (4.5, 1.5, 51),
+                               (6.0, 3.0, 60), (6.0, 3.0, 64), (9.0, 1.0, 67)])       # the hold lengthens both of the pair
+        self.assertEqual((score.tempo, score.meter), (96.0, (3, 4)))
+        self.assertEqual([n.vel for n in score.notes][4:6], [80, 80])                   # @5: softer
+        for bad, word in (("e4 h4", "not a note"), ("- c4", "holds"), ("", "no notes"), ("c4:x", "number of beats"),
+                          ("c4:99", "between"), ("c11", "not a note")):
+            with self.assertRaisesRegex(ValueError, word):
+                read_tune(bad)
+
+    def test_styles_and_chords_of_ones_own(self):
+        from eigenchip.arrangers import expand
+        from eigenchip.readers.tune import read_tune
+        grid = quantize(read_tune("e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2", 120))
+        bass = {}
+        for style in expand.STYLES:
+            arr = arrange(grid, "expand", 4, style=style)
+            bass[style] = len(arr.voice("bass").events)
+            self.assertEqual(arr.notes["style"], style)
+            self.assertEqual(bool(arr.drums), bool(expand.STYLES[style]["drums"]), style)
+            self.assertEqual(arr.voice("chords").instrument["arp"], expand.STYLES[style]["arp"], style)
+            self.assertEqual(clio.validate(clio.to_song(arr, grid)), [], style)
+        self.assertEqual((bass["march"], bass["drive"]), (16, 32))                      # every beat; every half beat
+        self.assertLess(bass["waltz"], bass["march"])
+        with self.assertRaisesRegex(ValueError, "Unknown style"):
+            arrange(grid, "expand", 4, style="polka")
+        # chords: read, named, and put in place of the arranger's own
+        self.assertEqual(expand.parse_chords("C | G7 | Am F | -"),
+                         [(0, 4, 7), (0, 4, 7), (7, 11, 2, 5), (7, 11, 2, 5), (9, 0, 4), (5, 9, 0), None, None])
+        self.assertEqual([expand.chord_name(expand.parse_chord(n)) for n in ("C", "am".capitalize(), "Bb", "F#m7", "Bdim", "Fmaj7")],
+                         ["C", "Am", "Bb", "F#m7", "Bdim", "Fmaj7"])
+        for bad in ("H", "Cm9", "C G Am"):
+            with self.assertRaises(ValueError):
+                expand.parse_chords(bad)
+        arr = arrange(grid, "expand", 4, chords_given=expand.parse_chords("C | G7 | Am F | -"))
+        self.assertEqual(arr.notes["chords_text"].split(" | ")[:3], ["C", "G7", "Am F"])
+        self.assertEqual([ps[0] % 12 for s, _d, ps in arr.voice("bass").events if s in (16, 32, 40)], [7, 9, 5])
+        self.assertTrue(any(len(ps) == 4 for _s, _d, ps in arr.voice("chords").events))  # the seventh is played
+
     def test_a_whole_piece_is_evidence_for_the_chords(self):
         for name in ("crossing", "long_tune", "ode_to_joy"):
             whole = quantize(read(os.path.join(CORPUS, name + ".mid")))

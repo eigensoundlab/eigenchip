@@ -13,7 +13,7 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.9.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Status: early (0.10.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangers that reduce and one that expands (a tune
 kept, the other voices written anew from the harmony) and four transcription
 baselines, finds drums, follows the tune through a recording and sorts the other notes into lines, and describes risers, falls,
@@ -149,6 +149,27 @@ everything else exists to feed them and to judge them.
 | `skyline` | Pitch only: the top line is the lead, the bottom line the bass, then the top of what is left. |
 | `roles` | Work out which *channel* carries the melody and which the bass from simple statistics, and take the lead only from the lead channel. |
 | `roles-arp` | As `roles`, but everything that is not lead or bass becomes one chord per half bar, played as an arpeggio. |
+
+## Writing instead of reducing
+
+`expand` goes the other way from the other arrangers: it keeps one line and writes the
+rest. On the page, *Write a tune* takes a melody as text, and the arrangement can be
+shaped by a style (plain, ballad, march, drive, waltz) and by the chords, which are shown
+bar by bar and can be replaced. In Python:
+
+```python
+from eigenchip.readers.tune import read_tune
+from eigenchip.ir import quantize
+from eigenchip.arrangers import arrange, expand
+from eigenchip.writers import clio
+
+grid = quantize(read_tune("e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2", tempo=120))
+arr = arrange(grid, "expand", 4, style="march", chords_given=expand.parse_chords("C | G7 | Am F | -"))
+song = clio.to_song(arr, grid)          # a CLIo song, as from any other arranger
+```
+
+It knows one key and the chords you give it; what it chooses itself are the seven triads
+of that key. It is a base to build a composer's tool on, not yet one.
 
 ## What has been found so far
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0 - 2026-11-14
+
+The base of a composer's tool: a tune of your own, and the voices written to it.
+
+- **Write a tune.** On the page, *Write a tune* takes a melody as text - `e4 e4 f4 g4 |
+  g4:2 e4:2`, a note a beat long unless a length in beats follows a colon, a dot for a
+  rest, `-` to hold - with a tempo and a meter (`eigenchip/readers/tune.py`). It is kept
+  as the lead and arranged with `expand`.
+- **Styles** for the written parts: *plain* (held bass, rolling chords), *ballad*,
+  *march* (bass on every beat, root and fifth; snare on two and four), *drive* (bass in
+  eighths, busy hats) and *waltz*. A style is a bass movement, a pace for the chord
+  voice and a bar of drums.
+- **Chords you can change.** The chords the arranger chose are shown bar by bar
+  (`C | C | F | C G`); edit the line and it plays yours - triads, sevenths (`G7`, `Dm7`,
+  `Fmaj7`), diminished; `-` leaves a bar to the arranger.
+- **Voices on and off.** Under the roll every voice of the chip version has a tick and a
+  *solo*; the sound is made again without the others and goes on from where it was.
+  The downloaded sound is what you hear.
+
+`expand` picks few chords when a tune fits one chord tolerably (four bars of *Ode to Joy*
+come out as C, C, C, C G): the line is there to be changed. The score table judges a
+written tune against itself, so for `expand` its "true" and "harmony" only say how much
+is new.
+
 ## 0.9.0 - 2026-11-14
 
 An arranger that goes the other way: from fewer voices to more.

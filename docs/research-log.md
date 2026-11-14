@@ -3,6 +3,27 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-14 - the composer's base
+
+**The verdict by ear on 0.9.0.** The orchestral piece: in the reduction, in the version
+on Playhead's beat and in the tune with written parts alike, the base melody can be
+heard and the whole is still chaotic - "a partial success". The Basic Pitch version was
+"maybe best to identify the melody" (the numbers had said worse: they measure the whole
+sound, not the tune). *Ode to Joy* expanded "sounds very good". Decision: leave the
+conversion of dense recordings for later and build the composer's tool on `expand`.
+
+**Built**: a tune as text, five styles, chords shown and replaceable, voices muted and
+soloed (the song is rendered again with the muted instruments at volume 0; the page
+keeps its place in the sound).
+
+**A question left on the table by the author**: what makes music *recognisable* when it
+is reduced - without false notes and mud? The work so far suggests an order: the tune's
+outline first (all three methods found it, and it was heard in all of them), then the
+bass roots and the chord per bar, then the rhythm of the accents, and only then inner
+voices. A conversion that kept only what it is sure of, in that order, would be thinner
+and truer. Playhead's sections, beats and builds are the natural frame for it: decide
+per section what is certain, instead of note by note.
+
 ## 2026-11-14 - is a trained transcriber the answer? and an arranger that expands
 
 **The verdict by ear on 0.8.0**: "not yet continuous enough, it still creates more like

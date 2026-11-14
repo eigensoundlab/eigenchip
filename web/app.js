@@ -21,6 +21,8 @@ const state = {
   facts: null,
   view: null,
   busy: false,
+  chords: null,          // chords the user asked for (text), for the expanding arranger
+  mute: new Set(),       // instruments of the chip version that are switched off
   hits: [],              // rectangles of drawn notes, for the tooltip
   geometry: null,
   urls: { original: null, chip: null },
@@ -174,6 +176,10 @@ function listening() {
 
 async function open() {
   const s = state.source;
+  if (s.tune) {
+    status("Reading the tune…");
+    return ask("open_tune", { text: s.tune.text, tempo: s.tune.tempo, meter: s.tune.meter, title: s.name });
+  }
   const title = s.name.replace(/\.[^.]+$/, "");
   const truth = s.example ? s.example.truth : null;
   const bytes = await sourceBytes();
@@ -208,13 +214,14 @@ async function convert(arrangeOnly) {
     const key = JSON.stringify([state.source.id, asAudio(), $("example-as").value, $("limit").value, listening()]);
     if (!arrangeOnly || key !== state.opened) {
       state.opened = null;
+      state.chords = null;                                  // another piece: its chords are chosen afresh
       state.facts = await open();
       state.opened = key;
     }
     progress(null);
     status("Arranging…");
     state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value),
-      expression: $("expression").value });
+      expression: $("expression").value, style: $("style").value || "plain", chords: state.chords });
     show();
     status("Making the chip sound…");
     await sound();
@@ -249,8 +256,90 @@ function likeness(l) {
     "0% is two unrelated sounds.");
 }
 
+// ---------------------------------------------------------------------- the composer's side: a tune, a style, chords
+function useTune() {
+  if (state.busy) return status("Still working on the last piece. Try again in a moment.");
+  if (!state.engine) return status("The engine is still starting. Try again in a moment.");
+  const text = $("tune").value.trim();
+  const tempo = Number($("tune-tempo").value.replace(",", "."));
+  if (!text) return status("Write a few notes first, for example: e4 e4 f4 g4", true);
+  if (!(tempo >= 30 && tempo <= 300)) return status("The tempo is a number of beats a minute, between 30 and 300.", true);
+  const meter = $("tune-meter").value.split("/").map(Number);
+  state.source = { id: "tune:" + JSON.stringify([text, tempo, meter]), name: "A tune", tune: { text, tempo, meter }, midi: true };
+  $("example").value = "";
+  $("arranger").value = "expand";
+  if (Number($("voices").value) < 4) $("voices").value = "4";
+  $("chosen").textContent = "A tune of your own. The arranger writes the other parts; change the style and the chords below.";
+  sourceChanged();
+  convert(false);
+}
+
+function written() {                                       // what only the expanding arranger has: a style, and chords to change
+  const v = state.view, on = !!v && v.arranger === "expand";
+  $("written").hidden = !on;
+  $("chordline").hidden = !on;
+  if (!on) return;
+  const style = $("style");
+  if (!style.options.length) for (const [name] of v.styles) style.append(new Option(name, name));
+  style.value = v.style || "plain";
+  $("style-about").textContent = (v.styles.find(([name]) => name === style.value) || [])[1] || "";
+  $("chords").value = v.chords_text || "";
+}
+
+// ---------------------------------------------------------------------- which voices sound
+const VOICE_NAMES = { lead: "Lead", bass: "Bass", inner: "Inner", chords: "Chords", kit: "Drums", bed: "Noise", fx: "Sweeps" };
+const voiceName = (id) => VOICE_NAMES[id] || id.replace(/^inner(\d)$/, "Inner $1").replace(/^fx(\d)$/, "Sweeps $1");
+const muted = () => [...state.mute].filter((id) => state.view && state.view.instruments.includes(id));
+
+function hear() {
+  const box = $("hear"), v = state.view;
+  box.innerHTML = "";
+  if (!v || v.instruments.length < 2) return;
+  for (const id of v.instruments) {
+    const tick = document.createElement("input");
+    tick.type = "checkbox";
+    tick.checked = !state.mute.has(id);
+    tick.addEventListener("change", () => { if (tick.checked) state.mute.delete(id); else state.mute.add(id); remix(); });
+    const label = document.createElement("label");
+    label.append(tick, " " + voiceName(id));
+    const solo = document.createElement("button");
+    solo.type = "button";
+    solo.className = "solo";
+    solo.textContent = "solo";
+    solo.title = `Only ${voiceName(id).toLowerCase()}; press again for all voices`;
+    const alone = v.instruments.every((other) => (other === id) !== state.mute.has(other));
+    solo.setAttribute("aria-pressed", String(alone));
+    solo.addEventListener("click", () => {
+      state.mute = new Set(alone ? [] : v.instruments.filter((other) => other !== id));
+      remix();
+    });
+    const item = document.createElement("span");
+    item.className = "voice";
+    item.append(label, solo);
+    box.append(item);
+  }
+}
+
+async function remix() {                                    // the chip version again, without the muted voices
+  hear();
+  if (state.busy || !state.view) return;
+  const p = players.chip, at = p.currentTime, playing = !p.paused && active() === "chip";
+  state.busy = true;
+  try {
+    state.chipBytes = await ask("chip", { mute: muted() });
+    setUrl("chip", new Blob([state.chipBytes], { type: "audio/wav" }));
+    p.currentTime = at;
+    if (playing) await p.play();
+  } catch (err) {
+    status(err.message, true);
+  } finally {
+    state.busy = false;
+    sourceChanged();
+  }
+}
+
 async function sound() {
-  state.chipBytes = await ask("chip", {});
+  state.chipBytes = await ask("chip", { mute: muted() });
   setUrl("chip", new Blob([state.chipBytes], { type: "audio/wav" }));
   likeness(await ask("likeness", {}));
   const s = state.source;
@@ -291,6 +380,8 @@ function show() {
   const inner = v.voices.filter((x) => x.role === "inner").length;
   $("third-name").textContent = [inner > 1 ? "Inner voices" : inner ? "Inner voice" : "", v.voices.some((x) => x.role === "chords") ? "chords" : ""]
     .filter(Boolean).join(" and ").replace(/^c/, "C") || "Chords";
+  written();
+  hear();
   draw();
   table();
 
@@ -336,7 +427,9 @@ function show() {
     file: "Judged against the notes in the file.",
     played: "Judged against the notes that were really played, so mistakes of the ear count too.",
     heard: "Judged against the notes that were heard: the real ones are not known, so mistakes of the ear do not show here.",
-  }[v.judged_against];
+  }[v.judged_against] + (state.source && state.source.tune
+    ? " The file is the tune you wrote: for an arranger that writes new parts, \u201ctrue\u201d and \u201charmony\u201d only say how much is new."
+    : "");
 }
 
 function table() {
@@ -630,6 +723,17 @@ $("pick").addEventListener("click", () => $("file").click());
 $("file").addEventListener("change", (e) => chooseFile(e.target.files[0]));
 $("example").addEventListener("change", chooseExample);
 $("example-as").addEventListener("change", sourceChanged);
+$("write").addEventListener("click", () => {
+  const panel = $("sketch");
+  panel.hidden = !panel.hidden;
+  $("write").setAttribute("aria-expanded", String(!panel.hidden));
+  if (!panel.hidden) $("tune").focus();
+});
+$("tune-use").addEventListener("click", useTune);
+$("style").addEventListener("change", () => convert(true));
+$("chords-use").addEventListener("click", () => { state.chords = $("chords").value.trim() || null; convert(true); });
+$("chords-auto").addEventListener("click", () => { state.chords = null; convert(true); });
+$("chords").addEventListener("keydown", (e) => { if (e.key === "Enter") $("chords-use").click(); });
 $("go").addEventListener("click", () => convert(false));
 $("stop").addEventListener("click", stopEngine);
 $("tempo").addEventListener("keydown", (e) => { if (e.key === "Enter") convert(false); });

@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import re
+import struct
 import sys
 import unittest
 
@@ -37,6 +38,36 @@ def clio_synth():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class ComposerTests(unittest.TestCase):
+    """The composer's way through the session: a tune as text, a style, chords, and voices switched off."""
+
+    def test_a_tune_a_style_chords_and_muted_voices(self):
+        session = Session()
+        facts = session.open_tune("e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2", tempo=120)
+        self.assertEqual((facts["kind"], facts["notes"], facts["tempo"]), ("midi", 15, 120.0))
+        view = session.arrange("expand", 4, style="march", chords="C | G7 | - | -")
+        self.assertEqual(view["arranger"], "expand")
+        self.assertEqual((view["style"], view["chords_text"].split(" | ")[:2]), ("march", ["C", "G7"]))
+        self.assertEqual(view["instruments"], ["lead", "bass", "inner", "chords", "kit"])
+        self.assertEqual([name for name, _about in view["styles"]], ["plain", "ballad", "march", "drive", "waltz"])
+        self.assertIsNone(session.arrange("roles-arp", 3)["chords_text"])      # a reducing arranger has none to show
+        with self.assertRaisesRegex(ValueError, "not a chord"):
+            session.arrange("expand", 4, chords="C | H")
+        session.arrange("expand", 4, style="march")
+
+        def loudness(wav):
+            count = (len(wav) - 44) // 2
+            values = struct.unpack("<%dh" % count, wav[44:44 + 2 * count])
+            return (sum(v * v for v in values) / float(count)) ** 0.5
+
+        synth = clio_synth()
+        whole = loudness(session.chip_wav(synth))
+        alone = loudness(session.chip_wav(synth, mute=["bass", "inner", "chords", "kit"]))
+        self.assertTrue(0 < alone < whole)
+        self.assertEqual(loudness(session.chip_wav(synth, mute=view["instruments"])), 0.0)
+        self.assertEqual(session.song["instruments"]["bass"]["volume"], 0.5)   # muting leaves the song as it is
 
 
 class SessionTests(unittest.TestCase):
