@@ -47,7 +47,7 @@ def _call(name, payload, blob):
                                                   progress=_progress, **a.get("options", {})))
     if name == "open_tune":
         return to_json(session.open_tune(a.get("text", ""), a.get("tempo", 100), tuple(a.get("meter", [4, 4])),
-                                         a.get("title", "A tune")))
+                                         a.get("title", "A tune"), a.get("notes")))
     if name == "arrange":
         return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4),
                                        expression=a.get("expression", "full"), style=a.get("style", "plain"),

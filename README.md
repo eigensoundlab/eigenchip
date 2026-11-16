@@ -13,7 +13,7 @@ Daniel Sandner ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814
 **Try it in the browser: <https://eigensoundlab.github.io/eigenchip/>** - nothing to
 install, and your files stay on your computer.
 
-Status: early (0.10.0). It reads MIDI files and, by transcribing them, sound files (WAV,
+Status: early (0.11.0). It reads MIDI files and, by transcribing them, sound files (WAV,
 Ogg, MP3, FLAC, M4A...); has three arrangers that reduce and one that expands (a tune
 kept, the other voices written anew from the harmony) and four transcription
 baselines, finds drums, follows the tune through a recording and sorts the other notes into lines, and describes risers, falls,
@@ -153,7 +153,9 @@ everything else exists to feed them and to judge them.
 ## Writing instead of reducing
 
 `expand` goes the other way from the other arrangers: it keeps one line and writes the
-rest. On the page, *Write a tune* takes a melody as text, and the arrangement can be
+rest. On the page, *Write a tune* takes a melody as text, *Edit the tune on the roll*
+lets you click, drag and play it in (the computer's keys, or a MIDI keyboard where the
+browser allows one) - also the lead of a piece you converted - and the arrangement can be
 shaped by a style (plain, ballad, march, drive, waltz) and by the chords, which are shown
 bar by bar and can be replaced. In Python:
 

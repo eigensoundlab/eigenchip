@@ -8,7 +8,7 @@ authors:
     orcid: "https://orcid.org/0000-0002-1041-814X"
 repository-code: "https://github.com/eigensoundlab/eigenchip"
 license: Apache-2.0
-version: 0.10.0
+version: 0.11.0
 date-released: "2026-11-13"
 keywords:
   - music information retrieval

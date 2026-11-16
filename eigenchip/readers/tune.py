@@ -64,3 +64,53 @@ def read_tune(text, tempo=100.0, meter=(4, 4), title="A tune"):
     if not notes:
         raise ValueError("There are no notes in the tune yet.")
     return Score(notes, float(tempo), tuple(meter), title, {0: "tune"})
+
+
+def read_notes(notes, tempo=100.0, meter=(4, 4), title="A tune"):
+    """The Score of a tune given as ``(start, length, pitch)`` in beats: what a piano roll or a keyboard hands over."""
+    out = []
+    for start, length, pitch in notes or []:
+        start, length, pitch = float(start), float(length), int(pitch)
+        if start < 0 or length <= 0 or not 12 <= pitch <= 119:
+            raise ValueError("A note of the tune is out of range (start %s, length %s, pitch %s)." % (start, length, pitch))
+        out.append(Note(start, length, pitch, 100, 0, 0))
+    if not out:
+        raise ValueError("There are no notes in the tune yet.")
+    out.sort(key=lambda n: (n.start, n.pitch))
+    return Score(out, float(tempo), tuple(meter), title, {0: "tune"})
+
+
+def _beats(length):
+    text = ("%.4f" % length).rstrip("0").rstrip(".")
+    return "" if text == "1" else ":" + (text[1:] if text.startswith("0.") else text)
+
+
+def write_tune(score):
+    """A score as tune text, so that what was drawn on the roll can be read and kept. The inverse of ``read_tune``
+    for one line; notes that start together are written together, a note still sounding when the next starts is
+    cut there (text holds one line)."""
+    from ..ir import pitch_name
+    groups = {}
+    for n in score.notes:
+        if not n.drum:
+            groups.setdefault(round(n.start * 4) / 4.0, []).append(n)
+    starts = sorted(groups)
+    bar = score.meter[0] * 4.0 / score.meter[1]
+    tokens, at = [], 0.0
+
+    def put(text, length):
+        nonlocal at
+        tokens.append(text + _beats(length))
+        at += length
+        if abs(at / bar - round(at / bar)) < 1e-6:
+            tokens.append("|")
+
+    for i, start in enumerate(starts):
+        if start - at >= 0.25:
+            put(".", start - at)
+        until = starts[i + 1] if i + 1 < len(starts) else None
+        length = max(n.dur for n in groups[start])
+        length = max(0.25, round((min(length, until - start) if until is not None else length) * 4) / 4.0)
+        names = [pitch_name(n.pitch).lower() for n in sorted(groups[start], key=lambda n: n.pitch)]
+        put(names[0] if len(names) == 1 else "[%s]" % " ".join(names), length)
+    return " ".join(tokens).rstrip(" |")

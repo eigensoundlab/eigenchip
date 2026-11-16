@@ -287,6 +287,20 @@ class ExpandTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, word):
                 read_tune(bad)
 
+    def test_a_tune_as_notes_and_back_as_text(self):
+        from eigenchip.readers.tune import read_notes, read_tune, write_tune
+        for text in ("e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2", "c4 . e4:.5 g4:.5 [c4 e4]:2 . a4"):
+            self.assertEqual(write_tune(read_tune(text)), text)                    # what was written is read back the same
+        score = read_notes([[2, 1, 67], [0, 1, 64], [1, 0.5, 64], [3.5, 2, 72]], tempo=110, meter=(3, 4))
+        self.assertEqual([(n.start, n.pitch) for n in score.notes], [(0.0, 64), (1.0, 64), (2.0, 67), (3.5, 72)])
+        self.assertEqual(write_tune(score), "e4 e4:.5 .:.5 g4 | .:.5 c5:2")
+        self.assertEqual(write_tune(read_tune("c4:3 d4 | - e4")), "c4:3 d4:2 e4")   # a hold becomes a length
+        held = read_notes([[0, 4, 60], [1, 1, 64]])                                 # still sounding when the next starts
+        self.assertEqual(write_tune(held), "c4 e4")
+        for bad in ([], [[0, 0, 60]], [[-1, 1, 60]], [[0, 1, 200]]):
+            with self.assertRaises(ValueError):
+                read_notes(bad)
+
     def test_styles_and_chords_of_ones_own(self):
         from eigenchip.arrangers import expand
         from eigenchip.readers.tune import read_tune

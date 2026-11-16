@@ -160,3 +160,15 @@ footer p { max-width: 46rem; }
 .hear .voice { display: inline-flex; align-items: center; gap: 0.35rem; }
 .hear button.solo { padding: 0.05rem 0.4rem; font-size: 0.78rem; border: 1px solid var(--rule); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; }
 .hear button.solo[aria-pressed="true"] { background: var(--go); color: var(--ink); border-color: transparent; }
+
+/* the tune on the roll */
+.editbar { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; align-items: center; margin: 0 0 0.5rem; color: var(--screen-ink); }
+.editbar #edit-tools { display: contents; }
+.editbar #edit-tools[hidden] { display: none; }
+.editbar .hint { color: var(--screen-dim); font-size: 0.85rem; flex-basis: 100%; margin: 0; }
+.editbar #edit-midi { flex-basis: auto; }
+.editbar button.quiet, .editbar select { color: var(--screen-ink); background: transparent; border: 1px solid var(--screen-dim); border-radius: 6px; padding: 0.25rem 0.6rem; }
+.editbar button[aria-pressed="true"] { background: var(--go); color: var(--ink); border-color: transparent; }
+.editbar select option { color: #111; }
+.editbar kbd { font: 0.8em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border: 1px solid var(--screen-dim); border-radius: 3px; padding: 0 0.25em; }
+.roll.editing #notes { cursor: crosshair; touch-action: none; }

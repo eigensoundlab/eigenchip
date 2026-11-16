@@ -58,6 +58,7 @@ class Session:
         self.samples = None         # the audio that was opened or rendered, mono at 22050 Hz
         self.played = None          # the Score that was played, when the audio came from one
         self.kind = None            # "midi" or "audio"
+        self.tune = False           # the source is a tune of the user's own (text, piano roll, keyboard)
         self.song = None
         self.grid = None
         self.likeness = None        # the chip sound compared with the sound that was opened, once both exist
@@ -77,13 +78,16 @@ class Session:
         if title and not score.title:
             score.title = title
         self.score, self.truth, self.kind = score, dict(truth or {}), "midi"
+        self.tune = False
         self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
 
-    def open_tune(self, text, tempo=100.0, meter=(4, 4), title="A tune"):
-        """Open a tune written as text (``eigenchip/readers/tune.py``): the composer's way in."""
-        from .readers.tune import read_tune
-        score = read_tune(text, tempo, meter, title)
+    def open_tune(self, text="", tempo=100.0, meter=(4, 4), title="A tune", notes=None):
+        """Open a tune written as text, or given as ``notes`` - ``(start, length, pitch)`` in beats, as a piano roll
+        or a keyboard hands them over (``eigenchip/readers/tune.py``): the composer's way in."""
+        from .readers.tune import read_notes, read_tune
+        score = read_notes(notes, tempo, meter, title) if notes is not None else read_tune(text, tempo, meter, title)
+        self.tune = True
         self.score, self.truth, self.kind = score, {"melody": 0}, "midi"
         self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
@@ -110,6 +114,7 @@ class Session:
                                         title, bool(drums), int(voices or 0), progress,
                                         quality or "standard", clean or "light", bool(effects))
         self.kind, self.truth, self.reference, self.played = "audio", {}, None, None
+        self.tune = False
         self.song = self.grid = self.likeness = None
         return self.facts()
 
@@ -250,12 +255,19 @@ class Session:
             "song_json": clio.dumps(song), "song_name": _slug(self.score.title),
             "instruments": list(song["instruments"]),
             "chords_text": arr.notes.get("chords_text"), "style": arr.notes.get("style"),
+            "tune_text": self._tune_text(),
             "styles": [[name, how["about"]] for name, how in expand.STYLES.items()],
         }
 
     # ------------------------------------------------------------------ #
     # sound and files
     # ------------------------------------------------------------------ #
+    def _tune_text(self):
+        if not getattr(self, "tune", False):
+            return None
+        from .readers.tune import write_tune
+        return write_tune(self.score)
+
     def chip_wav(self, synth, mute=()):
         """The arranged song played by CLIo's synthesizer (``engine.audio.synth``), as WAV bytes.
 

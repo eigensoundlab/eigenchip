@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.0 - 2026-11-16
+
+The tune on the piano roll.
+
+- **Edit the tune on the roll.** A switch above the roll turns the lead into notes you can
+  change there: a click adds a note of the chosen length, dragging moves it in time and
+  pitch, its right end lengthens it, a double click removes it. Every change is drawn at
+  once and, when the hand has rested, the other voices are written to it again.
+- **Play it in.** With the roll in focus the computer's keys A to K play C to C (W E T Y U
+  the black keys, Z and X the octave) and write each note at the marker, which moves on;
+  `.` is a rest, Backspace takes the last note back, the arrows move the marker and
+  transpose the chosen note. A **MIDI keyboard** does the same where the browser gives a
+  page one (Chrome, Edge, Firefox on request; not Safari).
+- **From a conversion to a tune.** Switched on over a converted piece, its lead becomes
+  the tune: what the transcriber got wrong can be put right by hand, and the parts
+  written to the corrected melody.
+- Roll and text stay in step: what is drawn is written out in the text box
+  (`readers.tune.write_tune`), and a tune typed there appears on the roll.
+- `readers.tune.read_notes`, `Session.open_tune(notes=...)`.
+
+Notes are entered step by step, not in time to a click: there is no recording against a
+metronome yet. One note length at a time is also the grid the pointer snaps to.
+
 ## 0.10.0 - 2026-11-14
 
 The base of a composer's tool: a tune of your own, and the voices written to it.

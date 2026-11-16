@@ -6,7 +6,7 @@
 <title>eigenchip workbench</title>
 <meta name="description" content="Reduce a sound or MIDI file to a few chip voices, in your browser. See what was heard, what was kept, and hear both.">
 <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=0.10.0">
+<link rel="stylesheet" href="app.css?v=0.11.0">
 </head>
 <body>
 <header class="top">
@@ -123,6 +123,15 @@
       <label><input type="checkbox" data-layer="drums" checked><i class="key key-drums"></i>Drums</label>
       <label id="effects-toggle" hidden><input type="checkbox" data-layer="effects" checked><i class="key key-effects"></i>Sweeps, swells, impacts</label>
     </div>
+    <div class="editbar" id="editbar">
+      <button type="button" id="edit" class="quiet" aria-pressed="false" title="Turn the lead into a tune you can change on the roll: click to add a note, drag to move it, drag its end to lengthen it.">Edit the tune on the roll</button>
+      <span id="edit-tools" hidden>
+        <label>Notes of <select id="edit-length"><option value="1">a quarter beat</option><option value="2">half a beat</option><option value="4" selected>one beat</option><option value="8">two beats</option><option value="16">four beats</option></select></label>
+        <button type="button" id="edit-clear" class="quiet">Clear the tune</button>
+        <span class="hint" id="edit-midi"></span>
+        <span class="hint">Click adds a note, dragging moves it, its right end lengthens it, a double click removes it. Keys <kbd>A</kbd> to <kbd>K</kbd> play C to C (<kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> the black keys, <kbd>Z</kbd> <kbd>X</kbd> the octave), <kbd>.</kbd> is a rest, <kbd>Backspace</kbd> takes the last note back.</span>
+      </span>
+    </div>
     <div class="roll" id="roll" tabindex="0" aria-label="Piano roll. Click to move the playhead.">
       <canvas id="keys" aria-hidden="true" hidden></canvas>
       <canvas id="notes" hidden></canvas>
@@ -182,6 +191,6 @@
   <a href="https://github.com/eryxgames/CLIo">CLIo</a>, as it will be in 2.1 (slides and levels in songs).
   Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.10.0"></script>
+<script src="app.js?v=0.11.0"></script>
 </body>
 </html>

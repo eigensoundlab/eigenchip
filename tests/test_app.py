@@ -55,7 +55,17 @@ class ComposerTests(unittest.TestCase):
         self.assertIsNone(session.arrange("roles-arp", 3)["chords_text"])      # a reducing arranger has none to show
         with self.assertRaisesRegex(ValueError, "not a chord"):
             session.arrange("expand", 4, chords="C | H")
+        self.assertEqual(view["tune_text"], "e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2")
         session.arrange("expand", 4, style="march")
+
+        # the same way in for a piano roll or a keyboard: notes in beats
+        other = Session()
+        other.open_tune(notes=[[0, 1, 64], [1, 1, 64], [2, 0.5, 65], [3, 1, 67]], tempo=110)
+        drawn = other.arrange("expand", 4)
+        self.assertEqual(drawn["tune_text"], "e4 e4 f4:.5 .:.5 g4")
+        self.assertEqual([n[:3] for n in drawn["source"]], [[0, 4, 64], [4, 4, 64], [8, 2, 65], [12, 4, 67]])
+        other.open_midi(corpus_bytes("ode_to_joy"))
+        self.assertIsNone(other.arrange("roles-arp", 3)["tune_text"])             # a file is not a tune of one's own
 
         def loudness(wav):
             count = (len(wav) - 44) // 2

@@ -14,6 +14,7 @@ const KEYS_W = 38;
 const RELEASE = ((document.currentScript && document.currentScript.src.split("v=")[1]) || "").split("&")[0];
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+const edit = { on: false, notes: [], length: 4, cursor: 0, sel: -1, drag: null, timer: 0, octave: 4, midi: null, audio: null };
 const state = {
   engine: null,          // {numpy, version} once Python is up
   source: null,          // {id, name, file?, example?, bytes?, midi}
@@ -178,7 +179,7 @@ async function open() {
   const s = state.source;
   if (s.tune) {
     status("Reading the tune…");
-    return ask("open_tune", { text: s.tune.text, tempo: s.tune.tempo, meter: s.tune.meter, title: s.name });
+    return ask("open_tune", { text: s.tune.text || "", notes: s.tune.notes || null, tempo: s.tune.tempo, meter: s.tune.meter, title: s.name });
   }
   const title = s.name.replace(/\.[^.]+$/, "");
   const truth = s.example ? s.example.truth : null;
@@ -382,6 +383,13 @@ function show() {
     .filter(Boolean).join(" and ").replace(/^c/, "C") || "Chords";
   written();
   hear();
+  if (v.tune_text != null && document.activeElement !== $("tune")) $("tune").value = v.tune_text;
+  if (edit.on && state.source && state.source.tune && state.source.tune.text) {     // written as text meanwhile: the roll follows
+    edit.notes = fromView();
+    edit.sel = -1;
+    edit.cursor = Math.max(0, ...edit.notes.map((n) => n[0] + n[1]));
+    $("roll").scrollLeft = 0;
+  }
   draw();
   table();
 
@@ -493,16 +501,21 @@ function sized(canvas, w, h) {
 function draw() {
   const v = state.view;
   if (!v) return;
-  const lo = v.pitch_range[0] - 2, hi = v.pitch_range[1] + 2;
+  let lo = v.pitch_range[0] - 2, hi = v.pitch_range[1] + 2;
+  const steps = edit.on ? Math.max(v.steps, editSteps()) : v.steps;
+  if (edit.on) {                                            // room to write: three octaves at least, and what is there
+    lo = Math.min(lo, 48, ...edit.notes.map((n) => n[2] - 2));
+    hi = Math.max(hi, 84, ...edit.notes.map((n) => n[2] + 2));
+  }
   const rows = hi - lo + 1;
   const rowH = Math.max(5, Math.min(12, Math.floor(310 / rows)));
   const axisH = 22;
   const hasDrums = v.drums.length > 0 || v.source_drums.length > 0;
   const drumH = hasDrums ? 26 : 0;
   const avail = Math.max(200, $("roll").clientWidth - KEYS_W - 2);
-  const px = Math.max(1.5, Math.min(12, Math.max(avail / Math.max(1, v.steps), Math.min(6, 15000 / Math.max(1, v.steps)))));
-  const W = Math.ceil(v.steps * px) + 2, H = axisH + rows * rowH + drumH + 4;
-  const g = (state.geometry = { lo, hi, rowH, axisH, px, W, H, drumY: axisH + rows * rowH + 6 });
+  const px = Math.max(1.5, Math.min(12, Math.max(avail / Math.max(1, steps), Math.min(6, 15000 / Math.max(1, steps)))));
+  const W = Math.ceil(steps * px) + 2, H = axisH + rows * rowH + drumH + 4;
+  const g = (state.geometry = { lo, hi, rowH, axisH, px, W, H, steps, drumY: axisH + rows * rowH + 6 });
   const y = (pitch) => axisH + (hi - pitch) * rowH;
 
   // the keys down the left edge
@@ -527,13 +540,13 @@ function draw() {
   c.font = "600 11px Archivo, sans-serif";
   c.textBaseline = "alphabetic";
   const everyBar = Math.max(1, Math.ceil(34 / (v.steps_per_bar * px)));
-  for (let s = 0; s <= v.steps; s += v.steps_per_beat) {
+  for (let s = 0; s <= steps; s += v.steps_per_beat) {
     const bar = s % v.steps_per_bar === 0;
     if (!bar && v.steps_per_beat * px < 7) continue;
     c.fillStyle = bar ? "rgba(201,211,224,0.28)" : "rgba(201,211,224,0.09)";
     c.fillRect(Math.round(s * px), bar ? 4 : axisH, 1, H);
     const n = s / v.steps_per_bar;
-    if (bar && n % everyBar === 0 && s < v.steps) { c.fillStyle = css("--screen-dim"); c.fillText(String(n + 1), s * px + 4, 15); }
+    if (bar && n % everyBar === 0 && s < steps) { c.fillStyle = css("--screen-dim"); c.fillText(String(n + 1), s * px + 4, 15); }
   }
 
   state.hits = [];
@@ -549,11 +562,11 @@ function draw() {
     }
     state.hits.push({ x, y: top, w, h, start, dur, pitch, label });
   };
-  if (layerOn("source")) for (const [s, d, p] of v.source) note(s, d, p, css("--source"), v.kind === "audio" ? "Heard" : "In the file");
+  if (layerOn("source") && !edit.on) for (const [s, d, p] of v.source) note(s, d, p, css("--source"), v.kind === "audio" ? "Heard" : "In the file");
   const colours = { lead: css("--lead"), bass: css("--bass") };
   for (const voice of v.voices) {
     const layer = voice.role === "lead" || voice.role === "bass" ? voice.role : "third";
-    if (!layerOn(layer)) continue;
+    if (!layerOn(layer) || (edit.on && voice.role === "lead")) continue;     // the tune is drawn from the editor, below
     const label = voice.role === "chords" ? "Chords" : voice.role === "inner" ? "Inner voice" : voice.role[0].toUpperCase() + voice.role.slice(1);
     for (const [s, d, p] of voice.notes) note(s, d, p, colours[voice.role] || css("--third"), label);
   }
@@ -565,6 +578,15 @@ function draw() {
     for (const [s] of v.drums) c.fillRect(s * px, g.drumY + 9, Math.max(1.5, Math.min(3, px - 1)), 7);
   }
   if ((v.effects || []).length && layerOn("effects")) drawEffects(c, v, g, px);
+  if (edit.on) {
+    edit.notes.forEach(([s, d, p], i) => {
+      note(s, d, p, css("--lead"), "Tune");
+      if (i === edit.sel) { c.strokeStyle = "#fff"; c.lineWidth = 1.5; c.strokeRect(s * px + 1, y(p) + 1, Math.max(2, d * px - 2.5), rowH - 2); }
+    });
+    c.fillStyle = css("--go");                              // where the next played note goes
+    c.fillRect(edit.cursor * px, axisH, 2, rows * rowH);
+    c.fillRect(edit.cursor * px - 3, axisH - 5, 8, 5);
+  }
   $("notes").setAttribute("aria-label", `Piano roll of ${v.title}: ${v.source.length} source notes and ${v.voices.length} chip voices.`);
   playhead();
 }
@@ -744,12 +766,13 @@ for (const p of Object.values(players)) p.addEventListener("ended", () => { stop
 $("notes").addEventListener("mousemove", hover);
 $("notes").addEventListener("mouseleave", () => { $("tip").hidden = true; });
 $("notes").addEventListener("click", (e) => {
-  if (!state.view || !state.geometry) return;
+  if (!state.view || !state.geometry || edit.on) return;    // while editing, the pointer writes notes (below)
   seek(((e.clientX - $("notes").getBoundingClientRect().left) / state.geometry.px) * state.view.step_seconds);
 });
 $("roll").addEventListener("keydown", (e) => {
   if (!state.view) return;
   if (e.key === " ") { e.preventDefault(); toggle(); }
+  if (edit.on) return editKey(e);
   const bar = state.view.steps_per_bar * state.view.step_seconds;
   if (e.key === "ArrowRight") { e.preventDefault(); seek(Math.min(total(), musicTime() + bar)); }
   if (e.key === "ArrowLeft") { e.preventDefault(); seek(Math.max(0, musicTime() - bar)); }
@@ -759,6 +782,238 @@ $("dl-wav").addEventListener("click", () => state.chipBytes && save(state.view.s
 $("dl-midi").addEventListener("click", async () => {
   if (!state.view || state.busy) return;
   try { save(state.view.song_name + ".mid", new Blob([await ask("midi", {})], { type: "audio/midi" })); } catch (err) { status(err.message, true); }
+});
+
+// ---------------------------------------------------------------------- the tune on the roll
+// With "Edit the tune on the roll" the lead is a list of notes that the pointer, the computer's keys and a MIDI
+// keyboard change. Every change is drawn at once and, a moment later, handed to the engine, which writes the
+// other voices to it again. Notes are [start, length, pitch] in steps of a quarter beat.
+const KEY_PITCH = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12 };
+
+function tuneMeta() {
+  const tempo = Number($("tune-tempo").value.replace(",", "."));
+  return { tempo: tempo >= 30 && tempo <= 300 ? tempo : 120, meter: $("tune-meter").value.split("/").map(Number) };
+}
+
+function editSteps() {                                      // what is written, and two empty bars to write on
+  const { meter } = tuneMeta();
+  const bar = (meter[0] * 16) / meter[1];
+  const end = Math.max(edit.cursor, ...edit.notes.map((n) => n[0] + n[1]), 0);
+  return Math.max(8 * bar, (Math.ceil(end / bar) + 2) * bar);
+}
+
+function blankView() {                                      // a roll with nothing on it yet
+  const { tempo, meter } = tuneMeta();
+  return { kind: "midi", title: "A tune", tempo, meter, steps: 0, steps_per_beat: 4, steps_per_bar: (meter[0] * 16) / meter[1],
+    step_seconds: 15 / tempo, pitch_range: [60, 72], source: [], voices: [], drums: [], source_drums: [], effects: [], played: null,
+    instruments: [], offset: 0 };
+}
+
+function beep(pitch) {                                      // the note under the finger, at once
+  try {
+    edit.audio = edit.audio || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = edit.audio, osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
+    gain.gain.setValueAtTime(0.07, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.24);
+  } catch (err) { /* no sound here: the note is still written */ }
+}
+
+function commit(soon) {                                     // draw now; tell the engine when the hand has rested
+  clearTimeout(edit.timer);
+  edit.timer = setTimeout(applyTune, soon ? 0 : 700);
+  draw();
+}
+
+async function applyTune() {
+  if (!edit.on) return;
+  if (state.busy) return commit();
+  if (!edit.notes.length) return status("The roll is empty. Click on it to add a note, or play one.");
+  const { tempo, meter } = tuneMeta();
+  const notes = edit.notes.map(([s, d, p]) => [s / 4, d / 4, p]);
+  state.source = { id: "tune:" + JSON.stringify([notes, tempo, meter]), name: "A tune", tune: { notes, tempo, meter }, midi: true };
+  $("example").value = "";
+  $("arranger").value = "expand";
+  if (Number($("voices").value) < 4) $("voices").value = "4";
+  $("chosen").textContent = "A tune of your own. The arranger writes the other parts; change the style and the chords below.";
+  sourceChanged();
+  await convert(false);
+}
+
+function fromView() {                                       // the tune as the engine has it, in quarter beats
+  const v = state.view;
+  if (!v) return [];
+  const k = 4 / v.steps_per_beat;
+  const lead = state.source && state.source.tune ? v.source : ((v.voices.find((x) => x.role === "lead") || v.voices[0] || {}).notes || []);
+  return lead.map(([s, d, p]) => [Math.round(s * k), Math.max(1, Math.round(d * k)), p]).sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+}
+
+function setEditing(on) {
+  if (on && state.busy) return status("Still working on the last piece. Try again in a moment.");
+  edit.on = on;
+  $("edit").setAttribute("aria-pressed", String(on));
+  $("edit").textContent = on ? "Done editing" : "Edit the tune on the roll";
+  $("edit-tools").hidden = !on;
+  $("roll").classList.toggle("editing", on);
+  if (!on) { clearTimeout(edit.timer); return draw(); }
+  const own = !!(state.source && state.source.tune);
+  if (state.view && !own) {                                 // a converted piece: its lead becomes a tune to work on
+    $("tune-tempo").value = String(Math.round(state.view.tempo));
+    const meter = state.view.meter.join("/");
+    if ([...$("tune-meter").options].some((o) => o.value === meter)) $("tune-meter").value = meter;
+  }
+  edit.notes = fromView();
+  edit.sel = -1;
+  edit.cursor = Math.max(0, ...edit.notes.map((n) => n[0] + n[1]));
+  $("sketch").hidden = false;
+  $("write").setAttribute("aria-expanded", "true");
+  if (!state.view) { state.view = blankView(); $("empty").hidden = true; }
+  listenToMidi();
+  if (!own && edit.notes.length) commit(true); else draw();
+  $("roll").focus();
+}
+
+function cell(event) {
+  const g = state.geometry, box = $("notes").getBoundingClientRect();
+  const x = event.clientX - box.left, y = event.clientY - box.top;
+  return { x, step: Math.max(0, Math.floor(x / g.px)), pitch: g.hi - Math.floor((y - g.axisH) / g.rowH), ruler: y < g.axisH };
+}
+
+function noteAt(step, pitch) {
+  for (let i = edit.notes.length - 1; i >= 0; i--) {
+    const [s, d, p] = edit.notes[i];
+    if (p === pitch && step >= s && step < s + d) return i;
+  }
+  return -1;
+}
+
+const snapped = (step) => Math.floor(step / edit.length) * edit.length;
+
+function playNote(pitch) {                                  // a key was pressed, here or on a MIDI keyboard: write it down
+  if (!edit.on || pitch < 12 || pitch > 119) return;
+  beep(pitch);
+  edit.notes.push([edit.cursor, edit.length, pitch]);
+  edit.sel = edit.notes.length - 1;
+  edit.cursor += edit.length;
+  commit();
+  const roll = $("roll"), x = KEYS_W + edit.cursor * state.geometry.px;
+  if (x > roll.scrollLeft + roll.clientWidth - 40) roll.scrollLeft = x - roll.clientWidth / 2;
+}
+
+function editKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (key in KEY_PITCH) { e.preventDefault(); if (!e.repeat) playNote(12 * (edit.octave + 1) + KEY_PITCH[key]); return; }
+  if (key === "z" || key === "x") { edit.octave = Math.max(1, Math.min(7, edit.octave + (key === "x" ? 1 : -1))); midiNote(); return; }
+  if (key === "." || key === "0") { e.preventDefault(); edit.cursor += edit.length; edit.sel = -1; return draw(); }
+  if (key === "ArrowRight" || key === "ArrowLeft") {
+    e.preventDefault();
+    edit.cursor = Math.max(0, edit.cursor + (key === "ArrowRight" ? edit.length : -edit.length));
+    return draw();
+  }
+  if ((key === "ArrowUp" || key === "ArrowDown") && edit.sel >= 0) {
+    e.preventDefault();
+    const n = edit.notes[edit.sel];
+    n[2] = Math.max(12, Math.min(119, n[2] + (key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 12 : 1)));
+    beep(n[2]);
+    return commit();
+  }
+  if (key === "Delete" && edit.sel >= 0) { e.preventDefault(); edit.notes.splice(edit.sel, 1); edit.sel = -1; return commit(); }
+  if (key === "Backspace") {                                // take back what was played last: the note that ends at the cursor
+    e.preventDefault();
+    let last = -1;
+    edit.notes.forEach((n, i) => { if (n[0] + n[1] === edit.cursor && (last < 0 || n[0] >= edit.notes[last][0])) last = i; });
+    if (last >= 0) { edit.cursor = edit.notes[last][0]; edit.notes.splice(last, 1); edit.sel = -1; return commit(); }
+    edit.cursor = Math.max(0, edit.cursor - edit.length);
+    return draw();
+  }
+}
+
+function midiNote() {
+  const names = edit.midi ? [...edit.midi.inputs.values()].map((i) => i.name).filter(Boolean) : [];
+  $("edit-midi").textContent = (!navigator.requestMIDIAccess ? "This browser gives a page no MIDI keyboard; the computer's keys work."
+    : edit.midi === false ? "The MIDI keyboard was not allowed; the computer's keys work."
+      : names.length ? "MIDI keyboard: " + names.join(", ") + "."
+        : "No MIDI keyboard found; plug one in, or use the computer's keys.") + ` Keys play octave ${edit.octave}.`;
+}
+
+async function listenToMidi() {
+  midiNote();
+  if (!navigator.requestMIDIAccess || edit.midi) return;
+  try {
+    edit.midi = await navigator.requestMIDIAccess();
+  } catch (err) {
+    edit.midi = false;
+    return midiNote();
+  }
+  const hook = () => {
+    for (const input of edit.midi.inputs.values()) {
+      input.onmidimessage = (m) => { if ((m.data[0] & 0xf0) === 0x90 && m.data[2] > 0) playNote(m.data[1]); };
+    }
+    midiNote();
+  };
+  edit.midi.onstatechange = hook;
+  hook();
+}
+
+$("edit").addEventListener("click", () => setEditing(!edit.on));
+$("edit-length").addEventListener("change", (e) => { edit.length = Number(e.target.value); $("roll").focus(); });
+$("edit-clear").addEventListener("click", () => { edit.notes = []; edit.sel = -1; edit.cursor = 0; draw(); status("The roll is empty. Click on it to add a note, or play one."); });
+$("tune-tempo").addEventListener("change", () => { if (edit.on) commit(true); });
+$("tune-meter").addEventListener("change", () => { if (edit.on) commit(true); });
+$("notes").addEventListener("pointerdown", (e) => {
+  if (!edit.on || !state.geometry || e.button !== 0) return;
+  const at = cell(e);
+  $("roll").focus();
+  if (at.ruler) { edit.cursor = snapped(at.step); edit.sel = -1; return draw(); }
+  if (at.pitch < 12 || at.pitch > 119) return;
+  let i = noteAt(at.step, at.pitch);
+  const added = i < 0;
+  if (added) {
+    edit.notes.push([snapped(at.step), edit.length, at.pitch]);
+    i = edit.notes.length - 1;
+  }
+  const n = edit.notes[i];
+  const end = (n[0] + n[1]) * state.geometry.px;
+  edit.sel = i;
+  edit.drag = { i, grow: n[1] * state.geometry.px > 10 && at.x > end - 5, by: at.step - n[0], moved: added };
+  edit.cursor = n[0] + n[1];
+  beep(n[2]);
+  $("notes").setPointerCapture(e.pointerId);
+  draw();
+});
+$("notes").addEventListener("pointermove", (e) => {
+  const d = edit.drag;
+  if (!edit.on || !d) return;
+  const at = cell(e), n = edit.notes[d.i];
+  const before = n.join();
+  if (d.grow) n[1] = Math.max(1, snapped(at.step) + edit.length - n[0]);
+  else {
+    n[0] = Math.max(0, snapped(at.step - d.by + edit.length / 2));
+    if (at.pitch >= 12 && at.pitch <= 119 && at.pitch !== n[2]) { n[2] = at.pitch; beep(n[2]); }
+  }
+  if (n.join() !== before) { d.moved = true; edit.cursor = n[0] + n[1]; draw(); }
+});
+const dropNote = () => {
+  const d = edit.drag;
+  edit.drag = null;
+  if (d && d.moved) commit(); else if (d) draw();
+};
+$("notes").addEventListener("pointerup", dropNote);
+$("notes").addEventListener("pointercancel", dropNote);
+$("notes").addEventListener("dblclick", (e) => {
+  if (!edit.on) return;
+  const at = cell(e), i = noteAt(at.step, at.pitch);
+  if (i < 0) return;
+  edit.notes.splice(i, 1);
+  const same = noteAt(at.step, at.pitch);                   // the first click of the two may have added one on top
+  if (same >= 0) edit.notes.splice(same, 1);
+  edit.sel = -1;
+  commit();
 });
 
 let dragDepth = 0;
