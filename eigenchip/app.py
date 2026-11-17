@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 
 from . import __version__, metrics
@@ -355,6 +356,46 @@ class Session:
                 kept = {left[0]: ".:%d" % clio.track_length(next(iter(tracks.values())))}
             patterns[name] = kept
         return clio.dumps(dict(self.song, instruments={n: self.song["instruments"][n] for n in left}, patterns=patterns))
+
+    def chip_stems(self, synth):
+        """The arranged song voice by voice, for a player that switches voices on and off while it plays.
+
+        One block of bytes: four bytes holding the length of a JSON header (little-endian), the header -
+        ``{"rate", "length", "names"}`` - and then, for every name, ``length`` samples of 16-bit sound.  Together
+        the voices add up to ``chip_wav``.  Needs a synthesizer that has ``render_tracks`` (CLIo 2.2.2)."""
+        import struct
+        if self.song is None:
+            raise ValueError("Arrange the piece first.")
+        tracks = synth.render_tracks(self.song)
+        names = [name for name in self.song["instruments"] if name in tracks]
+        length = max([len(tracks[name]) for name in names] + [0])
+        rate = getattr(synth, "RATE", 22050)
+        self.likeness = None
+        try:
+            import numpy as np
+        except ImportError:
+            np = None
+        if self.samples is not None and names:              # there is a sound to compare with: do it now
+            try:
+                from .audio import compare
+                whole = np.sum([np.asarray(tracks[name], dtype=np.float32) for name in names], axis=0)
+                lead = float(self.score.info.get("offset", 0.0) or 0.0) if self.kind == "audio" else 0.0
+                heard = compare.compare(self.samples, whole, rate, lead)
+                self.likeness = {k: heard[k] for k in compare.KEYS + ("seconds",)}
+            except Exception as err:                        # a comparison that fails must not cost the sound
+                self.likeness = {"error": str(err)}
+        header = json.dumps({"rate": rate, "length": length, "names": names}).encode("utf-8")
+        out = [struct.pack("<I", len(header)), header]
+        for name in names:
+            if np is not None:
+                out.append(np.clip(np.asarray(tracks[name], dtype=np.float64) * 32767.0, -32768, 32767)
+                           .astype("<i2").tobytes())
+            else:
+                pcm = synth.to_pcm(tracks[name])
+                if sys.byteorder == "big":
+                    pcm.byteswap()
+                out.append(pcm.tobytes())
+        return b"".join(out)
 
     def chip_wav(self, synth, mute=()):
         """The arranged song played by CLIo's synthesizer (``engine.audio.synth``), as WAV bytes.

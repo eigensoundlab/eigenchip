@@ -65,6 +65,8 @@ def _call(name, payload, blob):
         return to_json(session.likeness)
     if name == "chip":
         return session.chip_wav(clio_synth, a.get("mute") or ())
+    if name == "stems":
+        return session.chip_stems(clio_synth)
     if name == "original":
         return session.original_wav(a.get("colour", "band"))
     if name == "midi":

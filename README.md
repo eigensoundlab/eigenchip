@@ -201,8 +201,8 @@ The harmony is chosen half bar by half bar from the chords of one key, major or 
 the bar lines and comes to rest at the ends of phrases. It does not modulate, and it does
 not know secondary dominants or borrowed chords; write those into the chord line.
 
-The sounds of the genres use four instrument settings that CLIo's synthesizer will have
-from 2.3 (`web/vendor/clio`): `drive` (overdrive), `detune`, `filter` (a resonant low-pass
+The sounds of the genres use four instrument settings that CLIo's synthesizer has from
+2.2.2 on (`web/vendor/clio`): `drive` (overdrive), `detune`, `filter` (a resonant low-pass
 that moves over each note) and `room`. An older CLIo plays such a song with the same
 notes and plainer sounds.
 

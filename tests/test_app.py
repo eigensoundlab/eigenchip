@@ -113,13 +113,13 @@ class ComposerTests(unittest.TestCase):
         self.assertTrue(long["driven"] and not long["chip"])
         chip = session.arrange("expand", 4, style="epic orchestral", chip=True)   # the plain chip, for any CLIo
         self.assertTrue(chip["chip"] and not chip["driven"])
-        self.assertNotIn("2.3", chip["needs"] or "")
+        self.assertNotIn("2.2.2", chip["needs"] or "")
         horn = json.loads(session.arrange("expand", 4, lead="horn", chip=True)["song_json"])["instruments"]["lead"]
         self.assertEqual((horn["wave"], horn["volume"], "filter" in horn), ("saw", 0.3, False))
         self.assertFalse(view["driven"])
         heavy = session.arrange("expand", 4, style="doom")
         self.assertTrue(heavy["driven"])
-        self.assertIn("CLIo 2.3 (drive, detune, filter, room)", heavy["needs"])
+        self.assertIn("CLIo 2.2.2 (drive, detune, filter, room)", heavy["needs"])
         self.assertTrue(session.arrange("expand", 4, style="dark orchestral")["driven"])  # no overdrive, but detune and a filter
         session.arrange("expand", 4, style="doom")
         synth = clio_synth()
@@ -143,6 +143,30 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual((filed["form"], filed["parts"], filed["written"], filed["ending"]), (None, None, None, True))
 
 
+    def test_the_chip_sound_voice_by_voice(self):
+        session = Session()
+        session.open_tune("e4 e4 f4 g4 | g4 f4 e4 d4", tempo=120)
+        view = session.arrange("expand", 4, style="march")
+        synth = clio_synth()
+        packed = session.chip_stems(synth)
+        size = struct.unpack("<I", packed[:4])[0]
+        head = json.loads(packed[4:4 + size].decode("utf-8"))
+        self.assertEqual((head["names"], head["rate"]), (view["instruments"], 22050))
+        self.assertEqual(len(packed), 4 + size + 2 * head["length"] * len(head["names"]))
+        body = packed[4 + size:]
+        voices = [struct.unpack("<%dh" % head["length"], body[2 * i * head["length"]:2 * (i + 1) * head["length"]])
+                  for i in range(len(head["names"]))]
+        self.assertTrue(all(any(voice) for voice in voices))                      # every voice sounds
+        wav = session.chip_wav(synth)
+        whole = struct.unpack("<%dh" % head["length"], wav[44:44 + 2 * head["length"]])
+        together = [max(-32768, min(32767, sum(values))) for values in zip(*voices)]
+        self.assertLess(max(abs(a - b) for a, b in zip(whole, together)), 16)     # together they are the piece
+        alone = session.chip_wav(synth, mute=[n for n in view["instruments"] if n != "bass"])
+        bass = struct.unpack("<%dh" % head["length"], alone[44:44 + 2 * head["length"]])
+        self.assertLess(max(abs(a - b) for a, b in zip(bass, voices[head["names"].index("bass")])), 4)
+        with self.assertRaisesRegex(ValueError, "Arrange the piece first"):
+            Session().chip_stems(synth)
+
     def test_another_sound_for_the_tune_and_a_song_without_its_muted_voices(self):
         session = Session()
         session.open_tune("e4 e4 f4 g4 | g4 f4 e4 d4", tempo=100)
@@ -155,7 +179,7 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(json.loads(session.arrange("roles-arp", 3, lead="soft")["song_json"])["instruments"]["lead"]["wave"],
                          "soft")                                                  # for any arranger
         strings = session.arrange("expand", 4, lead="strings")
-        self.assertTrue(strings["driven"])                                        # detune, a filter, a room: CLIo 2.3
+        self.assertTrue(strings["driven"])                                        # detune, a filter, a room: CLIo 2.2.2
         with self.assertRaisesRegex(ValueError, "Unknown sound for the tune"):
             session.arrange("expand", 4, lead="kazoo")
         # what is switched off is left out of the song that is taken away

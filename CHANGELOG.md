@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.16.0 - 2026-11-17
+
+A voice is switched on or off at once.
+
+- **No more waiting for a voice.** Switching a voice on or off, or soloing it, used to
+  make the whole chip version anew in Python and then swap the sound - a second or more
+  on a long piece, during which the old sound played on: bars of delay. Now every voice
+  of the song is rendered once as its own sound (`Session.chip_stems`, on the
+  synthesizer's `render_tracks`), all are started together, and each sits behind its own
+  volume: a switch is heard within a few hundredths of a second, while the piece plays.
+- The sound that is taken away (*Chip sound (.wav)*) is mixed in the page from the voices
+  that are on.
+- The page's synthesizer is CLIo 2.2.2's; the texts name that version for the newer
+  instrument settings.
+
 ## 0.15.0 - 2026-11-17
 
 The rest of the orchestra, a short tune made long, the plain chip, and a tempo that is heard.

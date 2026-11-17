@@ -43,13 +43,13 @@ the tempi, drums and lead sounds of CLIo's own composer
 ``GENRES`` go further: they also say what the chord voice *is*.  In rock, metal,
 doom and industrial it is a guitar: power chords - root, fifth, octave, no third -
 low down, struck in the rhythm of a riff, on a saw or a thin pulse wave through
-overdrive (``"drive"``, CLIo 2.3) and a low-pass, with a bass that follows it and
+overdrive (``"drive"``, CLIo 2.2.2) and a low-pass, with a bass that follows it and
 drums to match.  In ambient and soundscape it is a pad: the chord held, spread
 wide, with a slow attack and a long tail, over a held or droning bass, without
 drums, with air around it - a track of noise that swells and fades.
 
 The orchestral, electronic and film genres rest on three more settings of CLIo's
-synthesizer (2.3): ``detune`` (a section instead of one player), ``filter`` (a
+synthesizer (2.2.2): ``detune`` (a section instead of one player), ``filter`` (a
 resonant low-pass that moves over each note: strings that open, brass, the
 squelch of an acid line) and ``room``.
 """

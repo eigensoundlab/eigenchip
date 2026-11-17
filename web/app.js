@@ -32,10 +32,113 @@ const state = {
   hits: [],              // rectangles of drawn notes, for the tooltip
   geometry: null,
   urls: { original: null, chip: null },
-  chipBytes: null,
   originalIsRecording: false,
 };
-const players = { original: new Audio(), chip: new Audio() };
+// The chip version, voice by voice: every track of the song is its own sound, all are started together, and each
+// sits behind its own volume.  So a voice is switched on or off at once while the piece plays, with nothing made
+// anew.  It answers to what the page asks of a player: paused, currentTime, duration, play(), pause(), "ended".
+class Stems extends EventTarget {
+  constructor() {
+    super();
+    this.ctx = null;
+    this.voices = [];                  // [{ name, samples (Float32Array), buffer, gain }]
+    this.sources = [];
+    this.rate = RATE;
+    this.duration = 0;
+    this.paused = true;
+    this.at = 0;                       // where it stands, in seconds, while it is not playing
+    this.began = 0;                    // the context's clock when it last began to play
+    this.off = new Set();
+    this.src = "";                     // not empty when there is something to play, as on an audio element
+  }
+
+  load(names, channels, rate) {
+    this.pause();
+    this.at = 0;
+    for (const voice of this.voices) voice.gain.disconnect();
+    this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    this.rate = rate;
+    this.voices = names.map((name, i) => {
+      const buffer = this.ctx.createBuffer(1, Math.max(1, channels[i].length), rate);
+      buffer.copyToChannel(channels[i], 0);
+      const gain = this.ctx.createGain();
+      gain.gain.value = this.off.has(name) ? 0 : 1;
+      gain.connect(this.ctx.destination);
+      return { name, samples: channels[i], buffer, gain };
+    });
+    this.duration = channels.length ? channels[0].length / rate : 0;
+    this.src = names.length ? "stems" : "";
+  }
+
+  get currentTime() {
+    return this.paused ? this.at : Math.min(this.duration, this.at + this.ctx.currentTime - this.began);
+  }
+
+  set currentTime(seconds) {
+    const playing = !this.paused;
+    if (playing) this.halt();
+    this.at = Math.max(0, Math.min(this.duration, seconds));
+    if (playing) this.go();
+  }
+
+  go() {
+    this.began = this.ctx.currentTime + 0.02;              // all voices at the same moment
+    this.sources = this.voices.map((voice, i) => {
+      const source = this.ctx.createBufferSource();
+      source.buffer = voice.buffer;
+      source.connect(voice.gain);
+      if (i === 0) source.onended = () => { this.halt(); this.at = this.duration; this.dispatchEvent(new Event("ended")); };
+      source.start(this.began, this.at);
+      return source;
+    });
+    this.paused = false;
+  }
+
+  halt() {
+    for (const source of this.sources) {
+      source.onended = null;
+      try { source.stop(); } catch (err) { /* it had not begun */ }
+    }
+    this.sources = [];
+    this.paused = true;
+  }
+
+  async play() {
+    if (!this.voices.length || !this.paused) return;
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    if (this.at >= this.duration - 0.01) this.at = 0;
+    this.go();
+  }
+
+  pause() {
+    if (this.paused) return;
+    this.at = this.currentTime;
+    this.halt();
+  }
+
+  mute(names) {                                             // at once, with a breath of a fade so that it does not click
+    this.off = new Set(names);
+    for (const voice of this.voices) voice.gain.gain.setTargetAtTime(this.off.has(voice.name) ? 0 : 1, this.ctx.currentTime, 0.008);
+  }
+
+  wav() {                                                   // what sounds now, as a WAV file: the voices that are on
+    const on = this.voices.filter((voice) => !this.off.has(voice.name));
+    const length = this.voices.length ? this.voices[0].samples.length : 0;
+    const out = new DataView(new ArrayBuffer(44 + 2 * length));
+    const text = (at, word) => [...word].forEach((c, i) => out.setUint8(at + i, c.charCodeAt(0)));
+    text(0, "RIFF"); out.setUint32(4, 36 + 2 * length, true); text(8, "WAVEfmt "); out.setUint32(16, 16, true);
+    out.setUint16(20, 1, true); out.setUint16(22, 1, true); out.setUint32(24, this.rate, true); out.setUint32(28, 2 * this.rate, true);
+    out.setUint16(32, 2, true); out.setUint16(34, 16, true); text(36, "data"); out.setUint32(40, 2 * length, true);
+    for (let i = 0; i < length; i++) {
+      let sum = 0;
+      for (const voice of on) sum += voice.samples[i];
+      out.setInt16(44 + 2 * i, Math.max(-32768, Math.min(32767, Math.round(sum * 32767))), true);
+    }
+    return new Blob([out.buffer], { type: "audio/wav" });
+  }
+}
+
+const players = { original: new Audio(), chip: new Stems() };
 
 // ---------------------------------------------------------------------- engine
 let worker = null;
@@ -380,27 +483,23 @@ function hear() {
   }
 }
 
-async function remix() {                                    // the chip version again, without the muted voices
+function remix() {                                          // a voice on or off: at once, also while it plays
   hear();
-  if (state.busy || !state.view) return;
-  const p = players.chip, at = p.currentTime, playing = !p.paused && active() === "chip";
-  state.busy = true;
-  try {
-    state.chipBytes = await ask("chip", { mute: muted() });
-    setUrl("chip", new Blob([state.chipBytes], { type: "audio/wav" }));
-    p.currentTime = at;
-    if (playing) await p.play();
-  } catch (err) {
-    status(err.message, true);
-  } finally {
-    state.busy = false;
-    sourceChanged();
-  }
+  if (state.view) players.chip.mute(muted());
 }
 
 async function sound() {
-  state.chipBytes = await ask("chip", { mute: muted() });
-  setUrl("chip", new Blob([state.chipBytes], { type: "audio/wav" }));
+  const packed = await ask("stems", {});                    // every voice of the chip version as its own sound
+  const view = new DataView(packed.buffer, packed.byteOffset, packed.byteLength);
+  const head = JSON.parse(new TextDecoder().decode(new Uint8Array(packed.buffer, packed.byteOffset + 4, view.getUint32(0, true))));
+  const start = 4 + view.getUint32(0, true);
+  const channels = head.names.map((_, i) => {
+    const out = new Float32Array(head.length);
+    for (let k = 0, at = start + 2 * i * head.length; k < head.length; k++, at += 2) out[k] = view.getInt16(at, true) / 32768;
+    return out;
+  });
+  players.chip.load(head.names, channels, head.rate);
+  players.chip.mute(muted());
   likeness(await ask("likeness", {}));
   const s = state.source;
   let note = "";
@@ -489,7 +588,7 @@ function show() {
     parts.push(`Up to ${b(v.polyphony[1])} notes sounded at once; the chip version has ${b(v.voices.length)} voice${v.voices.length === 1 ? "" : "s"}` +
       `${v.drums.length ? " and drums" : ""}, in ${v.patterns[0]} patterns of which ${v.patterns[1]} differ.`);
     if (v.needs && v.needs.includes("2.1")) parts.push("The song uses levels or slides, which need CLIo 2.1; choose \u201cplainly\u201d for one that CLIo 2.0 plays.");
-    if (v.driven) parts.push("Its sounds use overdrive, detune, a moving filter or a room, which need CLIo 2.3; an older CLIo plays the same notes with plainer sounds.");
+    if (v.driven) parts.push("Its sounds use overdrive, detune, a moving filter or a room, which need CLIo 2.2.2; an older CLIo plays the same notes with plainer sounds.");
   }
   $("facts").innerHTML = parts.join(" ");
   $("against").textContent = {
@@ -901,7 +1000,8 @@ $("longer").addEventListener("click", () => {             // the form made long 
   convert(true);
 });
 $("theme").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
-$("dl-wav").addEventListener("click", () => state.chipBytes && save(state.view.song_name + "-chip.wav", new Blob([state.chipBytes], { type: "audio/wav" })));
+$("dl-wav").addEventListener("click", () => state.view && players.chip.src &&
+  save(state.view.song_name + (muted().length ? "-part" : "") + "-chip.wav", players.chip.wav()));
 $("dl-midi").addEventListener("click", async () => {
   if (!state.view || state.busy) return;
   try { save(state.view.song_name + ".mid", new Blob([await ask("midi", {})], { type: "audio/midi" })); } catch (err) { status(err.message, true); }

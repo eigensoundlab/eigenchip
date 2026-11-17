@@ -343,7 +343,7 @@ def _label(i):
     return letters[i] if i < 26 else "%s%d" % (letters[i % 26], i // 26 + 1)
 
 
-SHAPED = ("drive", "detune", "filter", "room")              # instrument settings that CLIo has from 2.3 on
+SHAPED = ("drive", "detune", "filter", "room")              # instrument settings that CLIo has from 2.2.2 on
 
 
 def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, expression="full"):
@@ -429,7 +429,7 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
     moving = full and any("@" in text or ">" in text for tracks in patterns.values() for text in tracks.values())
     shaped = any(inst.get(key) for inst in instruments.values() for key in SHAPED)
     needs = (["CLIo 2.1 (slides and levels)"] if moving else []) + (
-        ["CLIo 2.3 (%s); an older one plays the same notes with plainer sounds" % ", ".join(SHAPED)] if shaped else [])
+        ["CLIo 2.2.2 (%s); an older one plays the same notes with plainer sounds" % ", ".join(SHAPED)] if shaped else [])
     return dict(([("needs", "; ".join(needs))] if needs else []), **{
         "title": title or grid.title or "untitled",
         "source": "eigenchip/%s" % (arrangement.name or "?"),

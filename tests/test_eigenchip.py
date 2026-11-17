@@ -508,7 +508,7 @@ class ExpandTests(unittest.TestCase):
                 self.assertGreaterEqual(sound["attack"], 0.25, name)
                 self.assertNotIn("drive", sound, name)
             shaped = any(inst.get(key) for inst in song["instruments"].values() for key in clio.SHAPED)
-            self.assertEqual("CLIo 2.3" in song.get("needs", ""), shaped, name)
+            self.assertEqual("CLIo 2.2.2" in song.get("needs", ""), shaped, name)
             self.assertEqual(shaped, name not in ("ambient", "soundscape"), name)
         self.assertEqual(kinds, {"power": ["rock", "metal", "doom", "industrial", "metal march"],
                                  "pad": ["ambient", "soundscape", "dark orchestral", "neon noir", "epic orchestral", "cathedral"],
@@ -539,7 +539,7 @@ class ExpandTests(unittest.TestCase):
             rich = arrange(grid, "expand", 4, style=name)
             song = clio.to_song(plain, grid)
             self.assertFalse([k for inst in song["instruments"].values() for k in inst if k in clio.SHAPED], name)
-            self.assertNotIn("2.3", song.get("needs", ""), name)
+            self.assertNotIn("2.2.2", song.get("needs", ""), name)
             self.assertEqual([v.events for v in plain.voices], [v.events for v in rich.voices], name)
             self.assertEqual(song["instruments"]["lead"]["volume"], 0.32, name)
             self.assertEqual("arp" in song["instruments"]["chords"], "arp" in clio.to_song(rich, grid)["instruments"]["chords"], name)

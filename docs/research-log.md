@@ -3,6 +3,28 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-17 - why a voice came bars late, and CLIo 2.2.2
+
+**Asked**: "why eigenchip app reacts with bars delay when a layer is turned on or off
+during play?" Because a switch made the whole chip version anew: the page asked Python
+for the song without the muted voices, the synthesizer rendered it - two and a half
+seconds here for 37 seconds of an orchestral genre, more in the browser - and only then
+was the sound swapped, at the same place. Meanwhile the old sound played on. The cure is not a faster
+render but none at all: the synthesizer gives every track of a song as its own sound
+(`render_tracks`, which adds up to `render_song` to the last bit of a float), the page
+starts them together through Web Audio and gives each a volume. In a browser: the lead's
+volume is at zero 80 ms after the click and the piece has not stopped.
+
+**CLIo 2.2.2** (four patches, 0021 to 0024): overdrive; detune, filter, room; and for
+the game's own composer - songs from a seed and a mood - a sound (`chip`, the default, or
+`rich`: the same notes on strings, horn, trumpet, clarinet, plucked strings, a driven
+guitar, by mood) and a form (`(A) A A B A B- A A+` for `long`), to be chosen by the
+designer for a game, a scene or a dungeon floor so that it keeps one sound. Each rich
+voice was set as loud as its chip counterpart by measuring it (three seeds a mood), so
+what was balanced stays balanced; plucked voices are left quieter than that, since
+matching the loudness of a pluck to a held note makes it far too sharp. Every existing
+song of the demo games and of the composer renders exactly as before (21 compared).
+
 ## 2026-11-17 - Playhead in the page; the rest of the orchestra; long by arrangement
 
 **The verdict by ear on 0.14.0**: "all last sounds wavs are much more pleasing and usable

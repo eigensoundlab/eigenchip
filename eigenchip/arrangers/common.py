@@ -16,7 +16,7 @@ INSTRUMENTS = {
 }
 
 # Other sounds for the tune, to choose when the one an arranger or a style gives it is too sharp.  Each replaces
-# the lead's instrument whole.  ``strings`` uses detune, a filter and a room: CLIo 2.3.
+# the lead's instrument whole.  ``strings`` uses detune, a filter and a room: CLIo 2.2.2.
 LEADS = {
     "soft": {"about": "Rounded and quieter: a tune that does not cut.",
              "sound": {"wave": "soft", "attack": 0.03, "decay": 0.12, "sustain": 0.65, "release": 0.25,
