@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.13.0 - 2026-11-17
+
+Genres: rock, metal, doom, industrial, ambient, soundscape - and modes.
+
+- **Genres** for the written parts (`expand.GENRES`), a third group beside the ways of
+  moving and the moods. A genre says what the chord voice *is*, gives every voice its own
+  sound, and brings a tempo:
+  - **rock** - power chords in eighths, a backbeat, a lead with some bite;
+  - **metal** - a galloping riff under hard overdrive, the bass with the guitar, two
+    kicks to the beat;
+  - **doom** - slow and very heavy: low chords left to ring;
+  - **industrial** - clipped chords in sixteenths on a thin pulse wave, an overdriven
+    kit, a hiss of steam at the end of every second bar;
+  - **ambient** - soft chords held and spread wide with a slow attack and a long tail, a
+    bass that stays as long as the chord, air (a bed of noise that swells and fades), no
+    drums;
+  - **soundscape** - a drone on the key note under everything, more air, the tune far
+    away in echo.
+- **Power chords and riffs.** In the four guitar genres the chord voice plays root, fifth
+  and octave - no third - low down, struck in the rhythm of a riff (`x` strikes, `-`
+  lets it ring, `.` is silent), through **overdrive**.
+- **Overdrive** is new in CLIo's synthesizer (`"drive"` on an instrument; it will be in
+  CLIo 2.3 - the page plays it already). A song with it plays on an older CLIo with the
+  same notes, clean; the song and the page say so.
+- **Modes.** Beside the key note there is now a choice of major, minor, dorian,
+  phrygian, lydian, mixolydian and locrian. A mode is never found by itself - a tune in C
+  major that leans on its e would be taken for E phrygian - but asked for, the chords
+  are the same seven with another one for home and the mode's own chord preferred (F
+  under E phrygian). `expand.parse_key("E phrygian")`.
+- An arrangement can carry tracks that are not notes (`Arrangement.tracks`: air, steam)
+  and a kit of its own; `writers.clio.to_song` writes them.
+
+None of the genres has been listened to by anyone yet: the volumes are set by measuring
+(the tune a little louder than the guitar, nothing clips), the sounds by reasoning.
+
 ## 0.12.0 - 2026-11-17
 
 Form, harmony that moves, moods, and a tune hummed in.

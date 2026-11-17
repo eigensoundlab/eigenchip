@@ -381,6 +381,19 @@ class ExpandTests(unittest.TestCase):
         self.assertEqual(expand.parse_key("Am"), (0, True))
         self.assertEqual(expand.parse_key("F# minor"), (9, True))
         self.assertEqual(expand.parse_key("G major"), (7, False))
+        # a mode can be asked for: the same seven chords, another one for home, and the chord that is the mode's own
+        self.assertEqual(expand.parse_key("E phrygian"), (0, "phrygian"))
+        self.assertEqual(expand.parse_key("d dorian"), (0, "dorian"))
+        self.assertEqual((expand.parse_key("A aeolian"), expand.parse_key("C ionian")), ((0, True), (0, False)))
+        dark = quantize(read_tune("e4:2 g4 e4 | f4:2 e4:2 | e4:2 g4 a4 | b4:3 a4 || b4:2 a4 g4 | a4:2 g4 f4 | "
+                                  "e4:2 f4 g4 | e4:4"))
+        found = arrange(dark, "expand", 4)
+        self.assertEqual(found.notes["key"], "A minor")                              # a mode is never found by itself
+        modal = arrange(dark, "expand", 4, key=expand.parse_key("E phrygian"), ending=True)
+        self.assertEqual(modal.notes["key"], "E phrygian")
+        bars = modal.notes["chords_text"].split(" | ")
+        self.assertEqual((bars[0], bars[1], bars[-1]), ("Em", "F Em", "Em"))         # home, the flat second, home
+        self.assertEqual(modal.voice("chords").events[-1][2], [55, 59, 64])          # the closing bar is on E minor
         self.assertIsNone(expand.parse_key(""))
         with self.assertRaisesRegex(ValueError, "not a key"):
             expand.parse_key("H")
@@ -424,6 +437,61 @@ class ExpandTests(unittest.TestCase):
         self.assertEqual(clio.validate(song), [])
         home = quantize(read_tune("e4 d4 c4:2 | d4 e4 c4:2", 120))                   # a tune that comes home by itself
         self.assertEqual(len(arrange(home, "expand", 4, ending=True).voice("lead").events), 6)
+
+    def test_genres(self):
+        from eigenchip.arrangers import expand
+        from eigenchip.readers.tune import read_tune
+        grid = quantize(read_tune("a4 c5 e5 c5 | d5 f5 e5:2 | a4 c5 e5 a5 | g#5 e5 a5:2", 100))
+        self.assertEqual(list(expand.GENRES), ["rock", "metal", "doom", "industrial", "ambient", "soundscape"])
+        self.assertFalse(set(expand.GENRES) & (set(expand.STYLES) | set(expand.MOODS)))
+        tune = [(s, tuple(p)) for s, _d, p in arrange(grid, "expand", 4).voice("lead").events]
+        for name, how in expand.GENRES.items():
+            arr = arrange(grid, "expand", 4, style=name, ending=True)
+            song = clio.to_song(arr, grid)
+            self.assertEqual(clio.validate(song), [], name)
+            self.assertEqual([(s, tuple(p)) for s, _d, p in arr.voice("lead").events][:len(tune)], tune, name)   # the tune is kept
+            self.assertEqual(bool(arr.drums), bool(how["drums"]), name)
+            self.assertNotIn("arp", song["instruments"]["chords"], name)          # a guitar or a pad: no arpeggio
+            self.assertTrue(40 <= how["tempo"] <= 200 and how["about"], name)
+            chords = arr.voice("chords").events
+            if how["chords"] == "power":                                          # root, fifth, octave: no third
+                self.assertTrue(all([p - ps[0] for p in ps] == [0, 7, 12] for _s, _d, ps in chords), name)
+                self.assertTrue(all(how["low"] <= ps[0] < how["low"] + 12 for _s, _d, ps in chords), name)
+                self.assertGreater(song["instruments"]["chords"]["drive"], 0.5, name)
+                self.assertIn("2.3 for the overdrive", song["needs"], name)
+            else:                                                                 # a pad: held, spread over more than an octave
+                self.assertTrue(all(ps[-1] - ps[0] > 12 for _s, _d, ps in chords), name)
+                self.assertGreaterEqual(song["instruments"]["chords"]["attack"], 0.5, name)
+                self.assertNotIn("drive", song["instruments"]["chords"], name)
+                self.assertIn("air", song["instruments"], name)
+                self.assertNotIn("overdrive", song["needs"], name)
+        strikes = lambda name: [s for s, _d, _p in arrange(grid, "expand", 4, style=name).voice("chords").events if s < 16]
+        self.assertEqual(strikes("rock"), [0, 2, 4, 6, 8, 10, 12, 14])            # eighths
+        self.assertEqual(strikes("metal"), [0, 2, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15])     # a gallop
+        self.assertEqual(strikes("doom"), [0])                                    # and left to ring
+        self.assertEqual(strikes("industrial"), [0, 1, 3, 5, 6, 8, 9, 11, 13, 14])
+        metal = arrange(grid, "expand", 4, style="metal")
+        self.assertEqual([s for s, _d, _p in metal.voice("bass").events], [s for s, _d, _p in metal.voice("chords").events])
+        self.assertTrue(all(b[2][0] == c[2][0] - 12 for b, c in zip(metal.voice("bass").events, metal.voice("chords").events)))
+        self.assertIn("o", dict(metal.drums)[0])                                  # a crash where the phrase begins
+        scape = arrange(grid, "expand", 4, style="soundscape")
+        self.assertEqual({p[0] for _s, _d, p in scape.voice("bass").events}, {45})      # a drone on the tonic, a
+        self.assertIsNone(scape.voice("inner"))
+        air, sound = scape.tracks["air"]
+        self.assertEqual((air[0][:2], air[0][3][1], air[1][3][1]), ((0, 16), (3, 7), (7, 3)))   # it swells and fades
+        self.assertEqual(sound["wave"], "noise")
+        song = clio.to_song(scape, grid)
+        self.assertIn("@3>7:16", song["patterns"][song["sequence"][0]]["air"])
+        plain = clio.to_song(scape, grid, expression="plain")                     # for CLIo 2.0: the air without its swell
+        self.assertNotIn(">", plain["patterns"][plain["sequence"][0]]["air"])
+        self.assertNotIn("needs", plain)
+        steam = arrange(grid, "expand", 4, style="industrial").tracks["steam"][0]
+        self.assertEqual([e[:2] for e in steam], [(28, 4), (60, 4)])              # the last beat of every second bar
+        self.assertEqual(clio.to_song(arrange(grid, "expand", 4, style="industrial"), grid)["instruments"]["kit"]["drive"], 0.6)
+        waltz = quantize(read_tune("c4 e4 g4 | f4 a4 c5 | g4 b4 d5 | c5:3", 120, (3, 4)))     # not four-four: a strike a beat
+        self.assertEqual([s for s, _d, _p in arrange(waltz, "expand", 4, style="rock").voice("chords").events][:4], [0, 4, 8, 12])
+        self.assertEqual(expand._strikes("x-x.", 0, 8, 16, 4), [(0, 2), (2, 1), (4, 2), (6, 1)])
+        self.assertEqual(expand._strikes("x---", 2, 6, 16, 4), [(2, 2), (4, 2)])  # a chord that begins is struck
 
     @unittest.skipUnless(os.path.exists(os.path.join(os.environ.get("CLIO", os.path.join(ROOT, "..", "eryxgames", "clio")),
                                                      "engine", "audio", "compose.py")),

@@ -1,9 +1,11 @@
 # CLIo's synthesizer
 
 `clio_synth.py` is `engine/audio/synth.py` from [CLIo](https://github.com/eryxgames/CLIo)
-as it will be in CLIo 2.1: tag `v2.0.0` plus the change that adds slides and levels to the
-song notation (`c3>c5:16`, `c4@5`, `c4@2>9:16`). Songs written for 2.0 sound exactly as
-they did. The web page uses it to play a converted song as the game engine would.
+as it will be in CLIo 2.3: tag `v2.2.1` plus the change that lets an instrument be
+overdriven (`"drive": 0.6`), which the rock, metal, doom and industrial genres of `expand`
+use for their guitars. Songs without `drive` sound exactly as they do in 2.2; a CLIo
+without it plays a song that has `drive` with the same notes, clean. The web page uses
+this file to play a song as the game engine would.
 
 Copyright 2024-2026 Daniel Sandner. Licensed under the Apache License, Version 2.0.
 

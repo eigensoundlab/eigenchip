@@ -283,7 +283,7 @@ function useTune() {
   convert(false);
 }
 
-const KEYS = NAMES.map((n) => [n, n + " major"]).concat(NAMES.map((n) => [n + "m", n + " minor"]));
+const MODES = ["major", "minor", "dorian", "phrygian", "lydian", "mixolydian", "locrian"];
 function written() {                                       // what only the expanding arranger has: a style or a mood, a form,
   const v = state.view, on = !!v && v.arranger === "expand";       // a key, an ending, and chords to change
   $("written").hidden = !on;
@@ -292,22 +292,27 @@ function written() {                                       // what only the expa
   if (!on) return;
   const style = $("style");
   if (!style.options.length) {
-    for (const [label, list] of [["Ways of moving", v.styles], ["Moods", v.moods]]) {
+    for (const [label, list] of [["Ways of moving", v.styles], ["Genres", v.genres], ["Moods", v.moods]]) {
       const group = document.createElement("optgroup");
       group.label = label;
       for (const [name] of list) group.append(new Option(name, name));
       style.append(group);
     }
     $("key").append(new Option("as found", ""));
-    for (const [value, name] of KEYS) $("key").append(new Option(name, value));
+    for (const name of NAMES) $("key").append(new Option(name, name));
+    for (const name of MODES) $("mode").append(new Option(name, name));
   }
   style.value = v.style || "plain";
-  const mood = v.moods.find(([name]) => name === style.value);
+  const mood = v.moods.find(([name]) => name === style.value), genre = v.genres.find(([name]) => name === style.value);
   $("style-about").textContent = mood ? `${mood[1]} A mood: it has its own drums and sound for the tune, and a tempo of ${mood[2]}.`
-    : (v.styles.find(([name]) => name === style.value) || [])[1] || "";
+    : genre ? `${genre[1]} A genre: every voice has its own sound, and it has a tempo of ${genre[2]}.`
+      : (v.styles.find(([name]) => name === style.value) || [])[1] || "";
   $("chords").value = v.chords_text || "";
-  $("key").options[0].text = "as found: " + (state.key ? "…" : v.key || "…");
-  $("key").value = state.key;
+  $("key").options[0].text = "as found" + (state.key ? "" : ": " + (v.key || "…"));
+  const chosen = (state.key || v.key || "C major").split(" ");       // "E phrygian"
+  $("key").value = state.key ? chosen[0] : "";
+  $("mode").value = chosen[1] || "major";
+  $("mode").hidden = !state.key;                            // the mode is chosen with the key note
   const own = !!v.parts;
   $("form-box").hidden = !own;
   if (own && document.activeElement !== $("form")) $("form").value = v.form || "";
@@ -319,8 +324,8 @@ function written() {                                       // what only the expa
     (v.ending ? "With its closing bar the song is played once." : "Without a closing bar the song goes round and round.");
 }
 
-function styleChanged() {                                   // a mood brings its tempo; a tune of one's own takes it
-  const v = state.view, mood = v && v.moods.find(([name]) => name === $("style").value);
+function styleChanged() {                                   // a mood or a genre brings its tempo; a tune of one's own takes it
+  const v = state.view, mood = v && [...v.genres, ...v.moods].find(([name]) => name === $("style").value);
   if (mood && state.source && state.source.tune) {
     $("tune-tempo").value = String(mood[2]);
     return edit.on ? commit(true) : useTune();
@@ -329,7 +334,7 @@ function styleChanged() {                                   // a mood brings its
 }
 
 // ---------------------------------------------------------------------- which voices sound
-const VOICE_NAMES = { lead: "Lead", bass: "Bass", inner: "Inner", chords: "Chords", kit: "Drums", bed: "Noise", fx: "Sweeps" };
+const VOICE_NAMES = { lead: "Lead", bass: "Bass", inner: "Inner", chords: "Chords", kit: "Drums", bed: "Noise", fx: "Sweeps", air: "Air", steam: "Steam" };
 const voiceName = (id) => VOICE_NAMES[id] || id.replace(/^inner(\d)$/, "Inner $1").replace(/^fx(\d)$/, "Sweeps $1");
 const muted = () => [...state.mute].filter((id) => state.view && state.view.instruments.includes(id));
 
@@ -470,7 +475,8 @@ function show() {
   if (f.notes) {
     parts.push(`Up to ${b(v.polyphony[1])} notes sounded at once; the chip version has ${b(v.voices.length)} voice${v.voices.length === 1 ? "" : "s"}` +
       `${v.drums.length ? " and drums" : ""}, in ${v.patterns[0]} patterns of which ${v.patterns[1]} differ.`);
-    if (v.needs) parts.push("The song uses levels or slides, which need CLIo 2.1; choose \u201cplainly\u201d for one that CLIo 2.0 plays.");
+    if (v.needs && v.needs.includes("2.1")) parts.push("The song uses levels or slides, which need CLIo 2.1; choose \u201cplainly\u201d for one that CLIo 2.0 plays.");
+    if (v.driven) parts.push("Its overdrive needs CLIo 2.3; an older CLIo plays the same notes clean.");
   }
   $("facts").innerHTML = parts.join(" ");
   $("against").textContent = {
@@ -831,7 +837,9 @@ $("tune-use").addEventListener("click", useTune);
 $("style").addEventListener("change", styleChanged);
 $("form").addEventListener("change", () => { state.form = $("form").value.trim() || null; convert(true); });
 $("form").addEventListener("keydown", (e) => { if (e.key === "Enter") $("form").blur(); });
-$("key").addEventListener("change", () => { state.key = $("key").value; state.chords = null; convert(true); });
+const keyChanged = () => { state.key = $("key").value ? `${$("key").value} ${$("mode").value}` : ""; state.chords = null; convert(true); };
+$("key").addEventListener("change", keyChanged);
+$("mode").addEventListener("change", keyChanged);
 $("ending").addEventListener("change", () => convert(true));
 $("hum").addEventListener("click", toggleHum);
 $("chords-use").addEventListener("click", () => { state.chords = $("chords").value.trim() || null; convert(true); });

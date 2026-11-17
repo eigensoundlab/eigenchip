@@ -3,6 +3,43 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-17 - genres: guitars, pads and air
+
+**The verdict by ear on 0.12.0**: all the samples "very good"; the Ode versions have "this
+sharper chip sound", the minor tune in *mystery* and the arranged hum "very pleasing".
+Asked for next: rock, metal ("doomlike industrial") and similar, and soundscapes.
+
+**What a genre needs that a style did not have.** A style moved the same three things
+(bass, arpeggio, drums). A genre changes what the chord voice *is*:
+
+- a **guitar**: root, fifth, octave - no third, so the chord is neither major nor minor
+  and nothing fights the tune - low down (from E2; from C2 in doom), struck in a riff.
+  What makes it a guitar is distortion, and the synthesizer had none: two saw waves a
+  fifth apart are an organ. A soft clipper over the *whole track* (so the two notes
+  grind against each other) with a low-pass after it does it; it went into CLIo's
+  synthesizer as `"drive"` (the peak stays, the rest comes up to it) and is offered to
+  CLIo as a patch. Without it the same song is clean and, as a whole, about 6 dB quieter
+  (the doom example: 0.18 against 0.09 RMS).
+- a **pad**: the chord held for as long as it lasts, spread wide (root, fifth, the third
+  an octave up), half a second or more of attack, a second or more of tail, echo.
+- **air**: a noise track written like the bed the audio reader makes from a recording,
+  swelling and fading over two bars. In a soundscape a pedal bass on the key note.
+
+**Loudness.** Overdrive brings a track's level up towards its peak: with the volumes of
+the styles the metal and doom mixes clipped (peak 1.0) and the guitar and bass buried
+the tune. Volumes are now set by measuring each voice alone: tune about 0.12 RMS, guitar
+and bass 0.09 to 0.11, drums 0.05 to 0.09; mixes peak below 0.9. This is arithmetic, not
+listening.
+
+**Modes.** A dark tune on e with an f in it is E phrygian; the key finder calls it A
+minor (the same notes) and begins on C. Finding modes by where a tune leans would turn
+Ode (most of it on e) into E phrygian, so modes are not found; they can be chosen. Then
+the seven chords are the same, the mode's own chord is home, the chords a step either
+side lead into it, and the mode's own colour chord is preferred (F under E phrygian):
+`Em | F Em | Em | Em | Em Am | F Em | Em F | Em` for the test tune.
+
+**Not listened to.** Every sound setting here is a first guess.
+
 ## 2026-11-17 - form, harmony that moves, moods, a hummed tune
 
 **Harmony.** `expand` chose too few chords (Ode's first bars: C, C, C, C G): a change

@@ -6,7 +6,7 @@
 <title>eigenchip workbench</title>
 <meta name="description" content="Reduce a sound or MIDI file to a few chip voices, in your browser. See what was heard, what was kept, and hear both.">
 <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=0.12.0">
+<link rel="stylesheet" href="app.css?v=0.13.0">
 </head>
 <body>
 <header class="top">
@@ -98,12 +98,12 @@
     </p>
     <p class="written" id="written" hidden>
       The written parts in the style
-      <select id="style" aria-label="Style or mood of the written parts"></select>
+      <select id="style" aria-label="Style, genre or mood of the written parts"></select>
       <span class="hint" id="style-about"></span>
     </p>
     <p class="written" id="shape" hidden>
       <label id="form-box">Form <input id="form" type="text" size="12" spellcheck="false" autocapitalize="characters" placeholder="A A B A" aria-describedby="shape-hint"></label>
-      <label>Key <select id="key" aria-describedby="shape-hint"></select></label>
+      <label>Key <select id="key" aria-describedby="shape-hint"></select> <select id="mode" aria-label="Major, minor, or a mode of the scale" title="Major and minor, and the modes: dorian (minor with a bright sixth), phrygian (dark: the second step is a half step above the key note), lydian, mixolydian (major with a flat seventh), locrian." hidden></select></label>
       <label><input type="checkbox" id="ending"> End with a closing bar</label>
       <span class="hint" id="shape-hint"></span>
     </p>
@@ -195,9 +195,9 @@
 
 <footer>
   <p>eigenchip <span id="version"></span> by Daniel Sandner, Apache-2.0. The chip sound is made by the synthesizer of
-  <a href="https://github.com/eryxgames/CLIo">CLIo</a>, as it will be in 2.1 (slides and levels in songs).
+  <a href="https://github.com/eryxgames/CLIo">CLIo</a> 2.2, with the overdrive it will have in 2.3.
   Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.12.0"></script>
+<script src="app.js?v=0.13.0"></script>
 </body>
 </html>

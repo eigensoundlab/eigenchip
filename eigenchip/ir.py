@@ -149,11 +149,14 @@ class Voice:
 
 
 class Arrangement:
-    def __init__(self, voices, drums=None, name="", notes=None):
+    def __init__(self, voices, drums=None, name="", notes=None, tracks=None):
         self.voices = [v.clean() for v in voices if v.events]
         self.drums = sorted(drums or [])    # [(step, ["k", "h"]), ...]
         self.name = name                    # arranger that produced it
         self.notes = dict(notes or {})      # free-form remarks from the arranger
+        # sound that is not a voice of notes - air, a hiss of steam: name -> (events, instrument); an event may
+        # carry a slide and a level of its own as its fourth item, ``((pitch, pitch), (level, level))``
+        self.tracks = dict(tracks or {})
 
     def voice(self, role):
         for v in self.voices:

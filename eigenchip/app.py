@@ -206,7 +206,7 @@ class Session:
 
         ``expression`` is ``full`` (levels and slides; the song needs CLIo 2.1)
         or ``plain`` (one level, sweeps in steps; plays on CLIo 2.0).  ``style``
-        (a style or a mood), ``chords`` (text such as ``"C | G | Am F"``; ``-``
+        (a style, a genre or a mood), ``chords`` (text such as ``"C | G | Am F"``; ``-``
         leaves a bar to the arranger), ``ending`` (a closing bar, and the song is
         played once) and ``key`` (``"Am"``, when the key found is not the one
         meant) are for ``expand``, which writes parts instead of reducing them.
@@ -283,7 +283,9 @@ class Session:
             "key": arr.notes.get("key"), "ending": bool(arr.notes.get("ending")),
             "tune_text": self._tune_text(),
             "styles": [[name, how["about"]] for name, how in expand.STYLES.items()],
+            "genres": [[name, how["about"], how["tempo"]] for name, how in expand.GENRES.items()],
             "moods": [[name, how["about"], how["tempo"]] for name, how in expand.MOODS.items()],
+            "driven": any(inst.get("drive") for inst in song["instruments"].values()),
             **self._form(grid),
         }
 

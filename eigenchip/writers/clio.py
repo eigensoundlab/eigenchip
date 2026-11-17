@@ -373,6 +373,11 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
                          / grid.steps_per_beat, total, full) if effects else []
     if bed:
         extra = dict(extra, bed=bed)
+    written = getattr(arrangement, "tracks", None) or {}    # air, steam: tracks an arranger wrote that are not notes
+    for name, (events, _sound) in written.items():
+        extra = dict(extra, **{name: events if full else [e[:3] for e in events]})
+    total = max([total] + [e[0] + e[1] for name in written for e in extra[name]])
+    total = ((total + bar - 1) // bar) * bar
     names = {}
     used = {}
     for v in arrangement.voices:                                # unique, stable track names
@@ -406,19 +411,23 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
         sequence.append(seen[key])
     instruments = {names[id(v)]: dict(v.instrument or INSTRUMENTS.get(v.role, {})) for v in arrangement.voices}
     if arrangement.drums:
-        instruments["kit"] = dict(INSTRUMENTS["kit"])
+        instruments["kit"] = dict(INSTRUMENTS["kit"], **(arrangement.notes.get("kit") or {}))
     if SOFTEN and grid.info.get("attacks_per_second", 99.0) < SOFT_BELOW:
         for inst in instruments.values():                       # slow music: no hard edges on the notes
             if inst.get("wave") != "drums":
                 inst.update(attack=max(inst.get("attack", 0.0), 0.08), release=max(inst.get("release", 0.0), 0.3))
     for name in sorted(extra):
-        instruments[name] = dict(BED if name == "bed" else (FX_SLIDING if full else FX_INSTRUMENTS)[name])
+        instruments[name] = dict(written[name][1] if name in written else BED if name == "bed"
+                                 else (FX_SLIDING if full else FX_INSTRUMENTS)[name])
     if "bed" in instruments and not full:
         instruments["bed"]["volume"] = 0.15                     # no levels to follow: keep it in the background
     elif "bed" in instruments:
         instruments["bed"].update(BED_SMOOTH)
     moving = full and (levels is not None or bool(extra))
-    return dict(([("needs", "CLIo 2.1 (slides and levels)")] if moving else []), **{
+    driven = any(inst.get("drive") for inst in instruments.values())
+    needs = (["CLIo 2.1 (slides and levels)"] if moving else []) + (
+        ["CLIo 2.3 for the overdrive; an older one plays the same notes clean"] if driven else [])
+    return dict(([("needs", "; ".join(needs))] if needs else []), **{
         "title": title or grid.title or "untitled",
         "source": "eigenchip/%s" % (arrangement.name or "?"),
         "tempo": int(round(grid.tempo)),

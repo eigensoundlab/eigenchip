@@ -39,6 +39,14 @@ triad around middle C, arpeggiated.  Inner: the chord tone next below the tune.
 sound for the tune and a drum pattern of their own, under the names and with
 the tempi, drums and lead sounds of CLIo's own composer
 (``engine/audio/compose.py``), so that a mood means the same in both.
+
+``GENRES`` go further: they also say what the chord voice *is*.  In rock, metal,
+doom and industrial it is a guitar: power chords - root, fifth, octave, no third -
+low down, struck in the rhythm of a riff, on a saw or a thin pulse wave through
+overdrive (``"drive"``, CLIo 2.3) and a low-pass, with a bass that follows it and
+drums to match.  In ambient and soundscape it is a pad: the chord held, spread
+wide, with a slow attack and a long tail, over a held or droning bass, without
+drums, with air around it - a track of noise that swells and fades.
 """
 from __future__ import annotations
 
@@ -70,6 +78,15 @@ CADENCE = 0.1           # what the tonic or the dominant gain at the end of a ph
 PHRASE = 4              # bars in a phrase when the tune does not say where its parts begin
 # How much each step above the tonic belongs to a major and to a minor key, as listeners rate it (Krumhansl and
 # Kessler, 1982): the tonic most, then the fifth and the third, the steps outside the scale least.
+# The other modes of a scale: the step of the major scale they rest on.  They are never *found* - a tune in C major
+# that leans on its e would be taken for E phrygian - but they can be asked for (``parse_key``): the chords are then
+# the same seven, with another one for home, and its neighbours a step above and below leading into it (F to Em in
+# E phrygian, D or F to Em... in dorian the major chord on the fourth step).
+MODES = {"dorian": 1, "phrygian": 2, "lydian": 3, "mixolydian": 4, "locrian": 6}
+# The chord that makes each mode sound like itself, as steps of the scale above its home chord: the major chord on
+# the fourth step in dorian, the one a half step above home in phrygian and locrian, a whole step above in lydian,
+# a whole step below in mixolydian.
+OWN_CHORD = {"dorian": 3, "phrygian": 1, "lydian": 1, "mixolydian": 6, "locrian": 1}
 PROFILE = {False: (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88),
            True: (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)}
 ENDS_ON = 0.1           # what a key gains when the music ends on its tonic (half of it when it begins there)
@@ -121,36 +138,57 @@ def key_of(notes):
 
 
 def parse_key(text):
-    """'C', 'C major', 'Am', 'a minor', 'F#m' -> ``(home, minor)`` as ``key_of`` gives them; None for nothing."""
+    """'C', 'C major', 'Am', 'a minor', 'F#m', 'E phrygian', 'D dorian' -> ``(home, mode)``; None for nothing.
+
+    ``home`` is the tonic of the major scale with the same notes, as ``key_of`` gives it; ``mode`` is False for
+    major, True for minor, or the name of one of ``MODES``."""
     text = (text or "").strip()
     if not text or text.lower() in ("-", "?", "found", "auto"):
         return None
-    found = re.match(r"^([A-Ga-g])([#b]?)\s*(m|min|minor|maj|major)?$", text)
-    if not found:
-        raise ValueError("'%s' is not a key I know. Write C, G major, Am or F# minor." % text)
+    found = re.match(r"^([A-Ga-g])([#b]?)\s*([A-Za-z]*)$", text)
+    kind = found.group(3).lower() if found else None
+    if kind in ("m", "min", "minor", "aeolian"):
+        mode, step = True, 9
+    elif kind in ("", "maj", "major", "ionian"):
+        mode, step = False, 0
+    elif kind in MODES:
+        mode, step = kind, SCALE[MODES[kind]]
+    else:
+        raise ValueError("'%s' is not a key I know. Write C, G major, Am, F# minor, or a mode as in E phrygian: %s."
+                         % (text, ", ".join(MODES)))
     tonic = ("C D EF G A B".index(found.group(1).upper()) + {"#": 1, "b": -1, "": 0}[found.group(2)]) % 12
-    minor = (found.group(3) or "") in ("m", "min", "minor")
-    return ((tonic + 3) % 12 if minor else tonic), minor
+    return (tonic - step) % 12, mode
+
+
+def degree_of(mode):
+    """The step of the major scale (0 to 6) a key rests on: 0 for major, 5 for minor, as ``MODES`` for the others."""
+    return 5 if mode is True else MODES.get(mode, 0) if mode else 0
 
 
 def chords(notes, tune, total, window, tonic, minor=False, bar=None, phrases=None, beat=None):
     """One triad (as three pitch classes, root first) per window: the best path through the chords of the key.
 
-    ``tonic`` is the tonic of the major scale (``key_of``), ``minor`` says the key is its relative minor.  ``bar``
+    ``tonic`` is the tonic of the major scale (``key_of``), ``minor`` says the key is its relative minor - or
+    names another mode of that scale (``MODES``).  ``bar``
     and ``beat`` are in steps; ``phrases`` are the steps at which a phrase begins (every ``PHRASE`` bars if none).
     """
     lead = {id(n) for n in tune}
     bar = bar or 2 * window
     beat = beat or max(1, bar // 4)
     count = max(1, -(-total // window))
+    mode, minor = minor, minor is True
+    home = degree_of(mode)                                  # which of the chords is the tonic chord
     key = MINOR if minor else MAJOR
+    if mode and not minor:                                  # a mode: its own chord is home, its neighbours lead there
+        own = (home + OWN_CHORD[mode]) % 7
+        key = [(triad, 1.0 if i == home else 0.97 if i == own else 0.6 if i == 6 else 0.9,
+                "T" if i == home else "D" if abs(i - home) in (1, 6) else "S") for i, triad in enumerate(TRIADS)]
     if minor:                                               # the major dominant needs its raised seventh to be heard,
         sharp = sum(n.dur for n in notes if n.pitch % 12 == (tonic + 8) % 12)       # or at least not contradicted
         plain = sum(n.dur for n in notes if n.pitch % 12 == (tonic + 7) % 12)
         key = key[:-1] + [(key[-1][0], 0.95 if sharp else 0.5 if plain else 0.85, "D")]
     size = len(key)
     sevenths = {4: (tonic + SEVENTH) % 12, 7: (tonic + 2) % 12}     # V of the major key, V of the minor one
-    home = 5 if minor else 0                                # which of them is the tonic chord
     begins = {int(p) // window for p in (phrases or range(0, total, PHRASE * bar))}
     fit, sounding = [], []
     for w in range(count):
@@ -167,7 +205,7 @@ def chords(notes, tune, total, window, tonic, minor=False, bar=None, phrases=Non
             pcs = {(tonic + p) % 12 for p in triad}
             inside = sum(heard[pc] for pc in pcs)
             outside = sum(heard) - inside
-            if i in sevenths and (i == 7 or not minor):     # the dominant may carry its seventh: an f does not speak
+            if i in sevenths and (i == 7 or mode is False): # the dominant may carry its seventh: an f does not speak
                 outside -= SEVENTH_FREE * heard[sevenths[i]]    # against G as it does against the others
             row.append(likely * (inside - AGAINST * outside) / full)
         fit.append(row if sum(heard) > 0 else None)
@@ -259,12 +297,113 @@ for _mood in MOODS.values():
     _mood["drums"] = _KITS[_mood["kit"]]
 
 
+# Genres.  ``chords``: ``power`` (root, fifth and octave from ``low`` up, struck as ``riff`` says) or ``pad`` (the
+# chord held and spread wide); without it the chord voice is the arpeggio of the styles.  ``riff``: one or two bars
+# of sixteen steps - ``x`` strikes, ``-`` lets it ring, ``.`` is silent.  ``bass``: as in the styles, or ``chug``
+# (the root wherever the guitar strikes), ``long`` (the root for as long as the chord lasts) or ``pedal`` (the
+# tonic of the key, whatever the chord).  ``sound``: what
+# each voice is played with, laid over the usual instrument (``None`` takes a setting away); ``kit_sound`` the same
+# for the drums.  The volumes are set so that the tune stays in front: overdrive makes a track much louder.  ``air``: the levels (0 to 9) between which a bed of noise swells and fades, two bars at a time.
+# ``steam``: a falling hiss on the last beat of every second bar.  ``crash``: an open hat where a phrase begins.
+_GUITAR = {"wave": "saw", "arp": None, "attack": 0.004, "decay": 0.12, "sustain": 0.75, "release": 0.06}
+_SOLO = {"wave": "saw", "duty": None, "attack": 0.01, "decay": 0.1, "sustain": 0.8, "release": 0.12}
+_PAD = {"arp": None, "gate": 1.0, "decay": 0.3, "sustain": 0.85}
+GENRES = {
+    "rock": {
+        "about": "Power chords in eighths, a backbeat, a lead with some bite.", "tempo": 126,
+        "chords": "power", "low": 40, "riff": "x-x-x-x-x-x-x-x-", "bass": "eighths", "arp": 1,
+        "drums": "k.h.s.h.k.k.s.h.", "crash": True,
+        "sound": {"chords": dict(_GUITAR, drive=0.55, lowpass=0.45, gate=0.85, volume=0.14),
+                  "lead": dict(_SOLO, drive=0.4, lowpass=0.3, vibrato=[5.5, 0.006], volume=0.235),
+                  "inner": {"wave": "square", "duty": 0.5, "volume": 0.1},
+                  "bass": {"volume": 0.4}},
+        "kit_sound": {"volume": 0.7}},
+    "metal": {
+        "about": "A galloping riff, hard overdrive, two kicks to the beat.", "tempo": 150,
+        "chords": "power", "low": 40, "riff": "x-xxx-xxx-xxx-xx", "bass": "chug", "arp": 1,
+        "drums": "khkkshkkkhkkshkk", "crash": True,
+        "sound": {"chords": dict(_GUITAR, drive=0.9, lowpass=0.4, gate=0.75, sustain=0.6, volume=0.13),
+                  "lead": dict(_SOLO, drive=0.6, lowpass=0.25, vibrato=[6, 0.007], volume=0.21),
+                  "inner": dict(_SOLO, drive=0.4, lowpass=0.3, volume=0.06),
+                  "bass": {"wave": "saw", "drive": 0.4, "lowpass": 0.6, "gate": 0.8, "volume": 0.17}},
+        "kit_sound": {"volume": 0.5}},
+    "doom": {
+        "about": "Slow and very heavy: low chords left to ring, a drum now and then.", "tempo": 60,
+        "chords": "power", "low": 36, "riff": "x---------------x-------x-----x-", "bass": "chug", "arp": 1,
+        "drums": "k...h...s...h.k.", "crash": True,
+        "sound": {"chords": dict(_GUITAR, drive=1.0, lowpass=0.55, gate=1.0, sustain=0.9, release=0.25, volume=0.09),
+                  "lead": dict(_SOLO, wave="soft", drive=0.3, lowpass=0.3, vibrato=[4.5, 0.006], release=0.4,
+                               echo=[0.375, 0.3], volume=0.165),
+                  "inner": {"wave": "soft", "release": 0.3, "volume": 0.1},
+                  "bass": {"wave": "saw", "drive": 0.5, "lowpass": 0.7, "gate": 1.0, "sustain": 0.9, "volume": 0.14}},
+        "kit_sound": {"volume": 0.8}},
+    "industrial": {
+        "about": "A machine: clipped chords in sixteenths, a hammering kit, steam.", "tempo": 104,
+        "chords": "power", "low": 38, "riff": "xx.x.xx.xx.x.xx.", "bass": "eighths", "arp": 1,
+        "drums": "k.hhc.hhk.khc.hh", "steam": True,
+        "sound": {"chords": dict(_GUITAR, wave="square", duty=0.125, drive=1.0, lowpass=0.3, gate=0.6, sustain=0.5,
+                                 volume=0.14),
+                  "lead": dict(_SOLO, drive=0.7, lowpass=0.2, volume=0.22),
+                  "inner": {"wave": "square", "duty": 0.125, "volume": 0.09},
+                  "bass": {"wave": "saw", "drive": 0.6, "lowpass": 0.65, "gate": 0.7, "volume": 0.22}},
+        "kit_sound": {"drive": 0.6, "volume": 0.37}},
+    "ambient": {
+        "about": "Soft chords held wide, a bass that takes its time, air, no drums.", "tempo": 66,
+        "chords": "pad", "bass": "long", "arp": 1, "drums": "", "air": (1, 4),
+        "sound": {"chords": dict(_PAD, wave="soft", attack=0.5, release=1.2, lowpass=0.5, echo=[0.4, 0.3], volume=0.13),
+                  "lead": {"wave": "soft", "duty": None, "attack": 0.06, "sustain": 0.7, "release": 0.6,
+                           "vibrato": [4.5, 0.004], "echo": [0.45, 0.35], "volume": 0.24},
+                  "inner": {"wave": "sine", "attack": 0.1, "release": 0.6, "volume": 0.12},
+                  "bass": {"wave": "triangle", "attack": 0.25, "sustain": 0.9, "release": 0.8, "gate": 1.0,
+                           "volume": 0.3}}},
+    "soundscape": {
+        "about": "A drone under everything, slow swells of noise, the tune far away.", "tempo": 60,
+        "chords": "pad", "bass": "pedal", "arp": 1, "drums": "", "air": (3, 7), "inner": False,
+        "sound": {"chords": dict(_PAD, wave="sine", attack=1.0, release=2.0, echo=[0.6, 0.4], volume=0.15),
+                  "lead": {"wave": "sine", "duty": None, "attack": 0.12, "sustain": 0.7, "release": 0.9,
+                           "vibrato": [4, 0.004], "echo": [0.5, 0.45], "volume": 0.2},
+                  "bass": {"wave": "triangle", "attack": 0.8, "sustain": 1.0, "release": 1.5, "gate": 1.0,
+                           "lowpass": 0.5, "volume": 0.3}}},
+}
+AIR = {"wave": "noise", "attack": 0.6, "decay": 0.05, "sustain": 1.0, "release": 0.8, "gate": 1.0, "lowpass": 0.35,
+       "volume": 0.22}
+STEAM = {"wave": "noise", "attack": 0.005, "decay": 0.05, "sustain": 1.0, "release": 0.05, "gate": 1.0, "volume": 0.35}
+
+
 def way(style):
-    """How the parts move for a style or a mood, by name."""
-    how = STYLES.get(style) or MOODS.get(style)
+    """How the parts move for a style, a genre or a mood, by name."""
+    how = STYLES.get(style) or GENRES.get(style) or MOODS.get(style)
     if how is None:
-        raise ValueError("Unknown style '%s'. Styles: %s. Moods: %s." % (style, ", ".join(STYLES), ", ".join(MOODS)))
+        raise ValueError("Unknown style '%s'. Styles: %s. Genres: %s. Moods: %s."
+                         % (style, ", ".join(STYLES), ", ".join(GENRES), ", ".join(MOODS)))
     return how
+
+
+def _strikes(riff, start, end, bar, beat):
+    """Where a riff strikes between ``start`` and ``end``, as ``(step, steps)``: a chord that begins is always
+    struck, whatever the riff says there.  In a meter that is not four-four the riff is a strike on every beat."""
+    def sign(s):
+        return riff[s % len(riff)] if bar == 16 else ("x" if s % beat == 0 else "-")
+    out = []
+    for s in range(start, end):
+        c = "x" if s == start and sign(s) == "-" else sign(s)
+        if c == "x":
+            out.append([s, 1])
+        elif c == "-" and out and out[-1][0] + out[-1][1] == s:
+            out[-1][1] += 1
+    return [tuple(o) for o in out]
+
+
+def _voiced(chord, how):
+    """The pitches the chord voice plays for a chord (pitch classes, root first), as the style has it."""
+    if how.get("chords") == "power":                        # root, fifth, octave: no third to be major or minor
+        root = _place(chord[0], how.get("low", 40))
+        return [root, _place(chord[2], root), root + 12]
+    if how.get("chords") == "pad":                          # spread wide: root, fifth, and the third above them
+        root = _place(chord[0], 48)
+        high = [_place(pc, root + 12) for pc in chord[1:2] + chord[3:]]
+        return sorted([root, _place(chord[2], root)] + high)
+    return sorted(_place(pc, 55) for pc in chord)           # close, around middle C: for an arpeggio
 
 
 def chord_name(chord):
@@ -334,7 +473,7 @@ def _walk(runs, beat, scale):
 def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=None):
     """``style`` is one of ``STYLES`` or ``MOODS``; ``chords_given`` as ``parse_chords`` returns them, to overrule
     the choice; with ``ending`` a closing bar on the tonic is written after the last one, and the song does not loop;
-    ``key`` as ``parse_key`` returns it, when the key found is not the one meant."""
+    ``key`` as ``parse_key`` returns it, when the key found is not the one meant - or a mode is: E phrygian."""
     how = way(style)
     notes = grid.pitched
     if not notes:
@@ -348,15 +487,16 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
         used = [n for n in notes if n.channel == remarks.get("lead_channel")]
     total = grid.length
     window = max(1, grid.steps_per_bar // 2)
-    tonic, minor = key or key_of(notes)
+    tonic, mode = key or key_of(notes)
+    minor = mode is True
     spb = grid.steps_per_beat
     phrases = [int(round(b * spb)) for b in grid.info.get("phrase_starts") or []] or None
-    path = chords(notes, used, total, window, tonic, minor, grid.steps_per_bar, phrases, spb)
+    path = chords(notes, used, total, window, tonic, mode, grid.steps_per_bar, phrases, spb)
     for i, given in enumerate(chords_given or []):
         if given and i < len(path):
             path[i] = tuple(given)
-    key_note = (tonic + 9) % 12 if minor else tonic
-    remarks.update(tonic=tonic, minor=minor, key=NAMES[key_note] + (" minor" if minor else " major"),
+    key_note = (tonic + SCALE[degree_of(mode)]) % 12
+    remarks.update(tonic=tonic, minor=minor, key="%s %s" % (NAMES[key_note], "minor" if minor else mode or "major"),
                    chords=len({c for c in path}), written="bass, chords and inner line are new",
                    style=style, chords_text=chords_text(path))
 
@@ -374,13 +514,21 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
     busy = len(tune_events) / max(1.0, total / float(grid.steps_per_beat)) >= 0.75      # tune notes per beat
     beat, bar = grid.steps_per_beat, grid.steps_per_bar
     bass, harmony = [], []
+    riff = how.get("riff") or "x---------------"
     if how["bass"] == "walk":
         bass = _walk(runs(), beat, {(tonic + s) % 12 for s in SCALE})
+    elif how["bass"] == "pedal":                            # the tonic, whatever the chord: a drone, struck every two bars
+        bass = [(s, min(2 * bar, total - s), [_place(key_note, 36)]) for s in range(0, total, 2 * bar)]
     for start, steps, chord in runs():
         root, fifth = _place(chord[0], 36), _place(chord[2], 36)                        # C2 and up
         end = start + steps
-        if how["bass"] == "walk":
+        if how["bass"] in ("walk", "pedal"):
             pass
+        elif how["bass"] == "chug":                         # with the guitar, an octave below it
+            low = max(28, _voiced(chord, how)[0] - 12)
+            bass += [(s, d, [low]) for s, d in _strikes(riff, start, end, bar, beat)]
+        elif how["bass"] == "long":                         # the root for as long as the chord lasts
+            bass.append((start, steps, [root]))
         elif how["bass"] == "beats":                        # root and fifth, beat by beat
             for k, s in enumerate(range(start, end, beat)):
                 bass.append((s, min(beat, end - s), [fifth if k % 2 else root]))
@@ -396,27 +544,49 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
                 bass.append((s, min(window, end - s), [fifth if s != start and (s // window) % 2 == 1 else root]))
         else:
             bass.append((start, steps, [root]))
-        harmony.append((start, steps, sorted(_place(pc, 55) for pc in chord)))          # around middle C
+        if how.get("chords") == "power":
+            harmony += [(s, d, _voiced(chord, how)) for s, d in _strikes(riff, start, end, bar, beat)]
+        else:
+            harmony.append((start, steps, _voiced(chord, how)))
     inner = []
     for start, steps, pitches in tune_events:               # the chord tone next below the tune, a third or more away
         chord = path[min(len(path) - 1, start // window)]
         under = max((p for p in (_place(pc, pitches[0] - 12) for pc in chord) if p <= pitches[0] - 3),
                     default=None)
-        if under is not None and under >= 48:
+        if under is not None and under >= 48 and how.get("inner", True):
             inner.append((start, steps, [under]))
     drums = map_drums(grid.drums)
     if not drums and how["drums"]:                          # the source had none: the style's own
         pattern = how["drums"] if bar == 16 else "".join(
             ("k" if s == 0 else "h" if s % beat == 0 else ".") for s in range(bar))
-        drums = [(s, [pattern[s % bar]]) for s in range(total) if pattern[s % bar] != "."]
+        drums = [(s, [pattern[s % len(pattern)]]) for s in range(total) if pattern[s % len(pattern)] != "."]
+        if how.get("crash"):                                # where a phrase begins
+            for s in (phrases or range(0, total, PHRASE * bar)):
+                drums = [(at, hits + ["o"] if at == s else hits) for at, hits in drums]
+                if not any(at == s for at, _hits in drums):
+                    drums.append((s, ["o"]))
+            drums.sort()
+    tracks = {}
+    if how.get("air"):                                      # a bed of noise that swells and fades, two bars at a time
+        low, high = how["air"]
+        air = []
+        for s in range(0, total, 2 * bar):
+            for a, b, bend in ((s, s + bar, ((60.0, 70.0), (low, high))), (s + bar, s + 2 * bar, ((70.0, 60.0), (high, low)))):
+                if a < total:
+                    air.append((a, min(b, total) - a, [int(bend[0][0])], bend))
+        tracks["air"] = (air, dict(AIR))
+    if how.get("steam"):                                    # a hiss that falls, on the last beat of every second bar
+        tracks["steam"] = ([(s - beat, beat, [86], ((86.0, 54.0), (6, 1))) for s in range(2 * bar, total + 1, 2 * bar)],
+                           dict(STEAM))
     if ending:                                              # one more bar: everything comes to rest on the tonic
         close = -(-total // bar) * bar
-        home = (key_note, (key_note + (3 if minor else 4)) % 12, (key_note + 7) % 12)
+        home = tuple((tonic + p) % 12 for p in TRIADS[degree_of(mode)])
         last = tune_events[-1]
         if last[2][0] % 12 != key_note or last[1] < window:  # the tune did not come home by itself
             tune_events = list(tune_events) + [(close, bar, [min((_place(key_note, last[2][0] - 6),), key=abs)])]
-        bass.append((close, bar, [_place(key_note, 36)]))
-        harmony.append((close, bar, sorted(_place(pc, 55) for pc in home)))
+        low = max(28, _voiced(home, how)[0] - 12) if how["bass"] == "chug" else _place(key_note, 36)
+        bass.append((close, bar, [low]))
+        harmony.append((close, bar, _voiced(home, how)))
         if drums:
             drums.append((close, ["k", "o"]))
         remarks["ending"] = True
@@ -434,4 +604,10 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
         out.append(rolling)
     if voices >= 4 and inner:
         out.insert(2, voice("inner", inner))
-    return Arrangement(out, drums, NAME, remarks)
+    for v in out:                                           # a genre has its own sound for every voice
+        over = (how.get("sound") or {}).get(v.role)
+        if over:
+            v.instrument = {k: val for k, val in dict(v.instrument, **over).items() if val is not None}
+    if how.get("kit_sound"):
+        remarks["kit"] = dict(how["kit_sound"])
+    return Arrangement(out, drums, NAME, remarks, tracks)

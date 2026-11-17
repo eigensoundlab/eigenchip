@@ -98,6 +98,17 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(len(view["source"]), 15 * 3 + 17)
         self.assertEqual((view["style"], view["voices"][0]["wave"]), ("heroic", "square"))
         self.assertEqual([m[0] for m in view["moods"]][:3], ["calm", "mystery", "dark"])
+        self.assertEqual([g[0] for g in view["genres"]], ["rock", "metal", "doom", "industrial", "ambient", "soundscape"])
+        self.assertFalse(view["driven"])
+        heavy = session.arrange("expand", 4, style="doom")
+        self.assertTrue(heavy["driven"])
+        self.assertIn("2.3 for the overdrive", heavy["needs"])
+        synth = clio_synth()
+        self.assertGreater(len(session.chip_wav(synth)), 44)                      # the vendored synthesizer has the overdrive
+        self.assertTrue(hasattr(synth, "drive"))
+        wide = session.arrange("expand", 4, style="soundscape")
+        self.assertEqual(wide["instruments"], ["lead", "bass", "chords", "air"])
+        self.assertGreater(len(session.chip_wav(synth, mute=["lead", "bass", "chords"])), 44)     # the air alone
         self.assertEqual(session.arrange("expand", 4, key="Am")["key"], "A minor")
         with self.assertRaisesRegex(ValueError, "names a part C"):
             session.arrange("expand", 4, form="A C")

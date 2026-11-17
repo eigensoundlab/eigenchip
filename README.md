@@ -161,14 +161,17 @@ you hummed, sang or whistled, for you to mend on the roll.
 
 The arrangement is then shaped by
 
-- a **style** (plain, ballad, march, drive, waltz, walk - a walking bass) or a **mood**
-  (calm, mystery, dark, tense, battle, heroic, shop, space, victory, defeat: the moods of
-  CLIo's own composer, each with its tempo, drums and sound for the tune);
+- a **style** (plain, ballad, march, drive, waltz, walk - a walking bass), a **genre**
+  (rock, metal, doom, industrial: power chords in a riff through overdrive; ambient,
+  soundscape: held pads, a drone, air and no drums) or a **mood** (calm, mystery, dark,
+  tense, battle, heroic, shop, space, victory, defeat: the moods of CLIo's own composer,
+  each with its tempo, drums and sound for the tune);
 - a **form**: `||` in the text, or a double click on a bar number of the roll, begins a
   new part (A, B, C…), and `A A B A` says in which order they are played;
 - an **ending**: a closing bar on the tonic, and the song is played once;
 - the **chords**, which are shown bar by bar and can be replaced, and the **key**, which
-  can be chosen when the one found is not the one meant.
+  can be chosen when the one found is not the one meant - also as a mode (E phrygian, D
+  dorian), which is never found by itself.
 
 In Python:
 
@@ -189,6 +192,10 @@ The harmony is chosen half bar by half bar from the chords of one key, major or 
 (its seven triads; in minor the major dominant too), so that it fits the tune, moves at
 the bar lines and comes to rest at the ends of phrases. It does not modulate, and it does
 not know secondary dominants or borrowed chords; write those into the chord line.
+
+The overdrive of the guitar genres is an instrument setting, `"drive"`, that CLIo's
+synthesizer will have from 2.3 (`web/vendor/clio`); an older CLIo plays such a song with
+the same notes, clean.
 
 ## What has been found so far
 
