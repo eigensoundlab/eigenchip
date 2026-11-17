@@ -24,11 +24,29 @@
   --source: #5d6b82;
   --effect: #c06fd6;       /* sounds that are not notes; drawn as shapes, never as bars */
   --focus: #1f5fd0;
+  --field: #fff;           /* what is typed into, and a chosen row */
+  --on-ink: #fff;          /* text on something filled with the ink colour */
+  --bad: #a01919;
+  --key-ink: #141b26;      /* text on the bright keys - the yellow one, those on the screen - in both modes */
+  color-scheme: light;
   font-family: "Archivo", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   font-size: 17px;
   line-height: 1.45;
   color: var(--ink);
   background: var(--plate);
+}
+/* Dark mode: the faceplate goes dark; the screen with the roll stays exactly as it is. */
+:root[data-theme="dark"] {
+  --plate: #0a0d13;
+  --panel: #161b25;
+  --ink: #e7ebf1;
+  --ink-2: #9aa5b5;
+  --rule: #364050;
+  --focus: #8ab4ff;
+  --field: #222a37;
+  --on-ink: #0a0d13;
+  --bad: #ff8f85;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -54,22 +72,22 @@ a { color: inherit; text-underline-offset: 0.18em; }
 .progress progress { flex: none; width: 9rem; height: 0.55rem; accent-color: var(--ink); }
 .status { margin: 0; color: var(--ink-2); font-stretch: 88%; }
 #stop { margin-left: 0.5rem; }
-.status.bad { color: #a01919; font-weight: 600; }
+.status.bad { color: var(--bad); font-weight: 600; }
 
 select, input[type="text"], button {
   font: inherit; color: var(--ink); border-radius: 6px;
 }
 select, input[type="text"] {
-  padding: 0.12rem 0.4rem; background: #fff; border: 1px solid var(--rule); border-bottom: 2px solid var(--ink);
+  padding: 0.12rem 0.4rem; background: var(--field); border: 1px solid var(--rule); border-bottom: 2px solid var(--ink);
   font-weight: 650; font-stretch: 88%;
 }
 input[type="text"] { width: 4.6rem; text-align: center; }
 input::placeholder { color: var(--ink-2); font-weight: 500; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.5; }
-.quiet { padding: 0.3rem 0.8rem; background: #fff; border: 1px solid var(--ink); font-weight: 600; font-stretch: 88%; }
-.quiet:hover:not(:disabled) { background: var(--ink); color: #fff; }
-.go { margin-left: 0.6rem; padding: 0.28rem 1.3rem; background: var(--go); border: 2px solid var(--ink); font-weight: 800; font-stretch: 112%; box-shadow: 0 3px 0 var(--ink); }
+.quiet { padding: 0.3rem 0.8rem; background: var(--field); border: 1px solid var(--ink); font-weight: 600; font-stretch: 88%; }
+.quiet:hover:not(:disabled) { background: var(--ink); color: var(--on-ink); }
+.go { margin-left: 0.6rem; padding: 0.28rem 1.3rem; background: var(--go); color: var(--key-ink); border: 2px solid var(--ink); font-weight: 800; font-stretch: 112%; box-shadow: 0 3px 0 var(--ink); }
 .go:hover:not(:disabled) { transform: translateY(1px); box-shadow: 0 2px 0 var(--ink); }
 .go:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
 body.dragging .bench { outline: 3px dashed var(--focus); outline-offset: -6px; }
@@ -91,16 +109,16 @@ body.dragging .bench { outline: 3px dashed var(--focus); outline-offset: -6px; }
 #keys { position: sticky; left: 0; z-index: 2; background: var(--screen); }
 .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--go); z-index: 1; pointer-events: none; }
 .empty { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 2rem; text-align: center; color: var(--screen-dim); }
-.tip { position: absolute; z-index: 5; padding: 0.3rem 0.55rem; background: #fff; color: var(--ink); border-radius: 4px; font-size: 0.86rem; font-stretch: 88%; pointer-events: none; white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+.tip { position: absolute; z-index: 5; padding: 0.3rem 0.55rem; background: #fff; color: var(--key-ink); border-radius: 4px; font-size: 0.86rem; font-stretch: 88%; pointer-events: none; white-space: nowrap; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
 .tip b { font-weight: 700; }
 .transport { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; padding-top: 0.7rem; }
-#play { min-width: 5.2rem; padding: 0.3rem 0.9rem; background: var(--screen-ink); border: 0; font-weight: 750; font-stretch: 112%; }
+#play { min-width: 5.2rem; padding: 0.3rem 0.9rem; background: var(--screen-ink); color: var(--key-ink); border: 0; font-weight: 750; font-stretch: 112%; }
 #play:hover:not(:disabled) { background: #fff; }
 .ab { display: inline-flex; margin: 0; padding: 0; border: 1px solid var(--screen-dim); border-radius: 6px; overflow: hidden; }
 .ab label { cursor: pointer; }
 .ab input { position: absolute; opacity: 0; }
 .ab span { display: block; padding: 0.28rem 0.9rem; font-weight: 600; font-stretch: 88%; }
-.ab input:checked + span { background: var(--go); color: var(--ink); }
+.ab input:checked + span { background: var(--go); color: var(--key-ink); }
 .ab input:disabled + span { opacity: 0.4; cursor: default; }
 .ab input:focus-visible + span { outline: 3px solid #fff; outline-offset: -3px; }
 #clock { font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -123,7 +141,7 @@ th:first-child, td:first-child { text-align: left; }
 thead th { font-weight: 600; font-stretch: 88%; color: var(--ink-2); border-bottom: 2px solid var(--ink); }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--panel); }
-tbody tr[aria-selected="true"] { background: #fff; box-shadow: inset 4px 0 0 var(--go); }
+tbody tr[aria-selected="true"] { background: var(--field); box-shadow: inset 4px 0 0 var(--go); }
 tbody tr[aria-selected="true"] td:first-child { font-weight: 750; }
 td button { all: unset; cursor: pointer; }
 td button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
@@ -148,21 +166,27 @@ footer p { max-width: 46rem; }
 /* the composer's side */
 .sketch { margin: 0.75rem 0 0.25rem; padding: 0.75rem 0.9rem; border: 1px solid var(--rule); border-radius: 8px; display: grid; gap: 0.45rem; }
 .sketch textarea { width: 100%; font: 0.95rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 0.5rem 0.6rem; border: 1px solid var(--rule); border-radius: 6px;
-  background: #fff; color: var(--ink); resize: vertical; }
+  background: var(--field); color: var(--ink); resize: vertical; }
 .sketch .row, .sketch .hint { margin: 0; }
 .sketch code, .written code { font: 0.85em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .written { margin: 0.6rem 0 0; display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem; align-items: baseline; }
 .written input[type="text"] { text-align: left; flex: 1 1 18rem; min-width: 10rem; font: 0.95rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 0.3rem 0.5rem; border: 1px solid var(--rule);
-  border-radius: 6px; background: #fff; color: var(--ink); }
+  border-radius: 6px; background: var(--field); color: var(--ink); }
 .written .hint { flex-basis: 100%; }
 .written #form { flex: 0 1 9rem; min-width: 6rem; text-transform: uppercase; }
 .written label { display: inline-flex; gap: 0.4rem; align-items: baseline; }
-.sketch #hum[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.sketch #hum[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.top nav { align-items: baseline; }
+.top nav #theme { padding: 0.15rem 0.6rem; font-size: 0.9rem; }
+.editbar button#rec[aria-pressed="true"] { background: #ff6b5e; color: var(--key-ink); border-color: transparent; }
+.transport .leadsound { display: inline-flex; gap: 0.4rem; align-items: baseline; color: var(--screen-ink); }
+.transport .leadsound select { color: var(--screen-ink); background: transparent; border: 1px solid var(--screen-dim); border-radius: 6px; padding: 0.2rem 0.5rem; }
+.transport .leadsound select option { color: #111; }
 /* which voices sound */
 .hear { display: inline-flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; align-items: center; }
 .hear .voice { display: inline-flex; align-items: center; gap: 0.35rem; }
-.hear button.solo { padding: 0.05rem 0.4rem; font-size: 0.78rem; border: 1px solid var(--rule); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; }
-.hear button.solo[aria-pressed="true"] { background: var(--go); color: var(--ink); border-color: transparent; }
+.hear button.solo { padding: 0.05rem 0.4rem; font-size: 0.78rem; border: 1px solid var(--screen-dim); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; }
+.hear button.solo[aria-pressed="true"] { background: var(--go); color: var(--key-ink); border-color: transparent; }
 
 /* the tune on the roll */
 .editbar { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; align-items: center; margin: 0 0 0.5rem; color: var(--screen-ink); }
@@ -171,7 +195,7 @@ footer p { max-width: 46rem; }
 .editbar .hint { color: var(--screen-dim); font-size: 0.85rem; flex-basis: 100%; margin: 0; }
 .editbar #edit-midi { flex-basis: auto; }
 .editbar button.quiet, .editbar select { color: var(--screen-ink); background: transparent; border: 1px solid var(--screen-dim); border-radius: 6px; padding: 0.25rem 0.6rem; }
-.editbar button[aria-pressed="true"] { background: var(--go); color: var(--ink); border-color: transparent; }
+.editbar button[aria-pressed="true"] { background: var(--go); color: var(--key-ink); border-color: transparent; }
 .editbar select option { color: #111; }
 .editbar kbd { font: 0.8em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border: 1px solid var(--screen-dim); border-radius: 3px; padding: 0 0.25em; }
 .roll.editing #notes { cursor: crosshair; touch-action: none; }

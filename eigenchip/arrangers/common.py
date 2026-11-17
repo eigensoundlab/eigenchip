@@ -15,6 +15,20 @@ INSTRUMENTS = {
     "kit": {"wave": "drums", "volume": 0.55},
 }
 
+# Other sounds for the tune, to choose when the one an arranger or a style gives it is too sharp.  Each replaces
+# the lead's instrument whole.  ``strings`` uses detune, a filter and a room: CLIo 2.3.
+LEADS = {
+    "soft": {"about": "Rounded and quieter: a tune that does not cut.",
+             "sound": {"wave": "soft", "attack": 0.03, "decay": 0.12, "sustain": 0.65, "release": 0.25,
+                       "vibrato": [5, 0.004], "lowpass": 0.3, "volume": 0.24}},
+    "flute": {"about": "A plain, breathy tone.",
+              "sound": {"wave": "sine", "attack": 0.05, "decay": 0.1, "sustain": 0.8, "release": 0.3,
+                        "vibrato": [5, 0.005], "volume": 0.34}},
+    "strings": {"about": "A section of strings, a little slow to speak.",
+                "sound": {"wave": "saw", "detune": 8, "attack": 0.1, "decay": 0.15, "sustain": 0.8, "release": 0.4,
+                          "filter": [700, 2600, 0.1, 0.4], "room": 0.4, "volume": 0.32}},
+}
+
 # General MIDI percussion -> the five drum sounds of the target
 _GM_DRUMS = {35: "k", 36: "k", 37: "s", 38: "s", 39: "c", 40: "s", 41: "t", 43: "t", 45: "t", 47: "t",
              48: "t", 50: "t", 42: "h", 44: "h", 46: "o", 49: "o", 51: "h", 52: "o", 53: "h", 55: "o",

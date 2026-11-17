@@ -98,11 +98,14 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(len(view["source"]), 15 * 3 + 17)
         self.assertEqual((view["style"], view["voices"][0]["wave"]), ("heroic", "square"))
         self.assertEqual([m[0] for m in view["moods"]][:3], ["calm", "mystery", "dark"])
-        self.assertEqual([g[0] for g in view["genres"]], ["rock", "metal", "doom", "industrial", "ambient", "soundscape"])
+        self.assertEqual([g[0] for g in view["genres"]][:6], ["rock", "metal", "doom", "industrial", "ambient", "soundscape"])
+        self.assertEqual(len(view["genres"]), 11)
         self.assertFalse(view["driven"])
         heavy = session.arrange("expand", 4, style="doom")
         self.assertTrue(heavy["driven"])
-        self.assertIn("2.3 for the overdrive", heavy["needs"])
+        self.assertIn("CLIo 2.3 (drive, detune, filter, room)", heavy["needs"])
+        self.assertTrue(session.arrange("expand", 4, style="dark orchestral")["driven"])  # no overdrive, but detune and a filter
+        session.arrange("expand", 4, style="doom")
         synth = clio_synth()
         self.assertGreater(len(session.chip_wav(synth)), 44)                      # the vendored synthesizer has the overdrive
         self.assertTrue(hasattr(synth, "drive"))
@@ -122,6 +125,36 @@ class ComposerTests(unittest.TestCase):
         session.open_midi(corpus_bytes("ode_to_joy"))
         filed = session.arrange("expand", 4, form="A A", ending=True)
         self.assertEqual((filed["form"], filed["parts"], filed["written"], filed["ending"]), (None, None, None, True))
+
+
+    def test_another_sound_for_the_tune_and_a_song_without_its_muted_voices(self):
+        session = Session()
+        session.open_tune("e4 e4 f4 g4 | g4 f4 e4 d4", tempo=100)
+        view = session.arrange("expand", 4, style="march")
+        self.assertEqual(([name for name, _about in view["leads"]], view["lead"]), (["soft", "flute", "strings"], ""))
+        self.assertEqual(json.loads(view["song_json"])["instruments"]["lead"]["wave"], "square")
+        flute = session.arrange("expand", 4, style="march", lead="flute")
+        self.assertEqual((flute["lead"], json.loads(flute["song_json"])["instruments"]["lead"]["wave"]), ("flute", "sine"))
+        self.assertEqual(json.loads(session.arrange("roles-arp", 3, lead="soft")["song_json"])["instruments"]["lead"]["wave"],
+                         "soft")                                                  # for any arranger
+        strings = session.arrange("expand", 4, lead="strings")
+        self.assertTrue(strings["driven"])                                        # detune, a filter, a room: CLIo 2.3
+        with self.assertRaisesRegex(ValueError, "Unknown sound for the tune"):
+            session.arrange("expand", 4, lead="kazoo")
+        # what is switched off is left out of the song that is taken away
+        view = session.arrange("expand", 4, style="march")
+        self.assertEqual(session.song_json(), view["song_json"])
+        backing = json.loads(session.song_json(["lead", "inner"]))
+        self.assertEqual(list(backing["instruments"]), ["bass", "chords", "kit"])
+        self.assertTrue(all(set(tracks) <= {"bass", "chords", "kit"} for tracks in backing["patterns"].values()))
+        from eigenchip.writers import clio
+        self.assertEqual(clio.validate(backing), [])
+        self.assertEqual(backing["sequence"], json.loads(view["song_json"])["sequence"])    # as long as it was
+        alone = json.loads(session.song_json(["bass", "inner", "chords", "kit"]))
+        self.assertEqual(list(alone["instruments"]), ["lead"])
+        with self.assertRaisesRegex(ValueError, "Every voice is switched off"):
+            session.song_json(view["instruments"])
+        self.assertEqual(session.song["instruments"].keys(), json.loads(view["song_json"])["instruments"].keys())
 
 
 class SessionTests(unittest.TestCase):

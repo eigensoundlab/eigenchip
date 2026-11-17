@@ -52,12 +52,15 @@ def _call(name, payload, blob):
         import numpy as np
         samples = np.frombuffer(_bytes(blob), dtype=np.float32)
         return to_json(session.open_hum(samples, a.get("rate", 22050), a.get("tempo", 100),
-                                        tuple(a.get("meter", [4, 4])), a.get("title", "A hummed tune"), _progress))
+                                        tuple(a.get("meter", [4, 4])), a.get("title", "A hummed tune"), _progress,
+                                        a.get("grid", 0.25)))
     if name == "arrange":
         return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4),
                                        expression=a.get("expression", "full"), style=a.get("style", "plain"),
                                        chords=a.get("chords"), form=a.get("form"), ending=a.get("ending", False),
-                                       key=a.get("key")))
+                                       key=a.get("key"), lead=a.get("lead") or None))
+    if name == "song":
+        return session.song_json(a.get("mute") or ())
     if name == "likeness":
         return to_json(session.likeness)
     if name == "chip":

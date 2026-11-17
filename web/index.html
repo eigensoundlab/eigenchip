@@ -6,7 +6,16 @@
 <title>eigenchip workbench</title>
 <meta name="description" content="Reduce a sound or MIDI file to a few chip voices, in your browser. See what was heard, what was kept, and hear both.">
 <link rel="preload" href="fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=0.13.0">
+<script>
+  // light or dark before anything is drawn: what was chosen here before, else what the system prefers
+  (function () {
+    var chosen = null;
+    try { chosen = localStorage.getItem("eigenchip-theme"); } catch (err) { /* no storage here */ }
+    document.documentElement.dataset.theme = chosen === "dark" || chosen === "light" ? chosen
+      : (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  })();
+</script>
+<link rel="stylesheet" href="app.css?v=0.14.0">
 </head>
 <body>
 <header class="top">
@@ -16,6 +25,7 @@
     <a href="https://github.com/eigensoundlab/eigenchip">Source</a>
     <a href="https://github.com/eigensoundlab/eigenchip/blob/main/RESULTS-audio.md">Results</a>
     <a href="https://github.com/eigensoundlab/eigenchip/blob/main/docs/research-log.md">Research log</a>
+    <button type="button" id="theme" class="quiet" aria-pressed="false">Dark</button>
   </nav>
 </header>
 
@@ -46,6 +56,7 @@
         <select id="tune-meter" aria-label="Meter of the tune"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select>
         <button type="button" id="tune-use" class="go">Arrange this tune</button>
         <button type="button" id="hum" class="quiet" aria-pressed="false" title="Record your voice with the microphone and have the tune written down. Hum, sing or whistle one note after another, near the tempo set here.">Hum it instead</button>
+        <label>on <select id="snap" title="The note value that hummed and played notes are put on. Sixteenths keep quick notes; eighths and quarters forgive uneven timing."><option value="1">sixteenths</option><option value="2">eighths</option><option value="4">quarter notes</option></select></label>
       </p>
     </div>
     <p class="method">
@@ -134,6 +145,8 @@
       <button type="button" id="edit" class="quiet" aria-pressed="false" title="Turn the lead into a tune you can change on the roll: click to add a note, drag to move it, drag its end to lengthen it.">Edit the tune on the roll</button>
       <span id="edit-tools" hidden>
         <label>Notes of <select id="edit-length"><option value="1">a quarter beat</option><option value="2">half a beat</option><option value="4" selected>one beat</option><option value="8">two beats</option><option value="16">four beats</option></select></label>
+        <button type="button" id="rec" class="quiet" aria-pressed="false" title="Play the tune in time: one bar is counted in, then every key you press - here or on a MIDI keyboard - is written where and as long as you played it, on the note value chosen for hummed and played notes.">Record in time</button>
+        <button type="button" id="edit-tidy" class="quiet" title="Put every note of the tune on the note value chosen for hummed and played notes: its start on the nearest one, its length a whole number of them.">Tidy the notes</button>
         <button type="button" id="edit-clear" class="quiet">Clear the tune</button>
         <span class="hint" id="edit-midi"></span>
         <span class="hint">Click adds a note, dragging moves it, its right end lengthens it, a double click removes it. A double click on a bar number begins a new part of the tune there (B, C…), or joins it to the part before. Keys <kbd>A</kbd> to <kbd>K</kbd> play C to C (<kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> the black keys, <kbd>Z</kbd> <kbd>X</kbd> the octave), <kbd>.</kbd> is a rest, <kbd>Backspace</kbd> takes the last note back.</span>
@@ -155,6 +168,7 @@
       </fieldset>
       <output id="clock">0:00 / 0:00</output>
       <span class="hear" id="hear" role="group" aria-label="Which voices of the chip version sound"></span>
+      <label class="leadsound" id="lead-box" hidden>Tune played <select id="lead-sound" title="Another sound for the tune, when the one the style gives it is too sharp."></select></label>
       <span class="hint" id="sound-note"></span>
     </div>
   </section>
@@ -198,6 +212,6 @@
   <a href="https://github.com/eryxgames/CLIo">CLIo</a> 2.2, with the overdrive it will have in 2.3.
   Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.13.0"></script>
+<script src="app.js?v=0.14.0"></script>
 </body>
 </html>

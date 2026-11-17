@@ -47,6 +47,11 @@ overdrive (``"drive"``, CLIo 2.3) and a low-pass, with a bass that follows it an
 drums to match.  In ambient and soundscape it is a pad: the chord held, spread
 wide, with a slow attack and a long tail, over a held or droning bass, without
 drums, with air around it - a track of noise that swells and fades.
+
+The orchestral, electronic and film genres rest on three more settings of CLIo's
+synthesizer (2.3): ``detune`` (a section instead of one player), ``filter`` (a
+resonant low-pass that moves over each note: strings that open, brass, the
+squelch of an acid line) and ``room``.
 """
 from __future__ import annotations
 
@@ -297,8 +302,10 @@ for _mood in MOODS.values():
     _mood["drums"] = _KITS[_mood["kit"]]
 
 
-# Genres.  ``chords``: ``power`` (root, fifth and octave from ``low`` up, struck as ``riff`` says) or ``pad`` (the
-# chord held and spread wide); without it the chord voice is the arpeggio of the styles.  ``riff``: one or two bars
+# Genres.  ``chords``: ``power`` (root, fifth and octave from ``low`` up, struck as ``riff`` says), ``stab`` (the
+# whole chord, close, struck as ``riff`` says) or ``pad`` (the chord held and spread wide; with ``sevenths`` the
+# seventh of the scale is added); without it the chord voice is the arpeggio of the styles.  ``drums`` may be
+# several patterns laid over each other.  ``riff``: one or two bars
 # of sixteen steps - ``x`` strikes, ``-`` lets it ring, ``.`` is silent.  ``bass``: as in the styles, or ``chug``
 # (the root wherever the guitar strikes), ``long`` (the root for as long as the chord lasts) or ``pedal`` (the
 # tonic of the key, whatever the chord).  ``sound``: what
@@ -358,15 +365,82 @@ GENRES = {
                            "volume": 0.3}}},
     "soundscape": {
         "about": "A drone under everything, slow swells of noise, the tune far away.", "tempo": 60,
-        "chords": "pad", "bass": "pedal", "arp": 1, "drums": "", "air": (3, 7), "inner": False,
+        "chords": "pad", "bass": "pedal", "arp": 1, "drums": "", "air": (2, 5), "air_sound": "wind", "inner": False,
         "sound": {"chords": dict(_PAD, wave="sine", attack=1.0, release=2.0, echo=[0.6, 0.4], volume=0.15),
                   "lead": {"wave": "sine", "duty": None, "attack": 0.12, "sustain": 0.7, "release": 0.9,
                            "vibrato": [4, 0.004], "echo": [0.5, 0.45], "volume": 0.2},
                   "bass": {"wave": "triangle", "attack": 0.8, "sustain": 1.0, "release": 1.5, "gate": 1.0,
                            "lowpass": 0.5, "volume": 0.3}}},
 }
+# An orchestra and a studio, as far as a chip goes.
+_STRINGS = dict(_PAD, wave="saw", detune=9, attack=0.25, release=0.6, filter=[600, 2600, 0.1, 0.5], lowpass=0.3,
+                room=[0.5, 1.5])
+_SPICCATO = {"wave": "saw", "detune": 7, "attack": 0.008, "decay": 0.12, "sustain": 0.3, "release": 0.08, "gate": 0.6,
+             "filter": [2400, 700, 0.1, 0.1], "room": 0.4}
+_HORN = {"wave": "saw", "duty": None, "attack": 0.06, "decay": 0.15, "sustain": 0.8, "release": 0.3,
+         "filter": [300, 1500, 0.15, 0.25], "vibrato": [4.5, 0.003], "room": [0.5, 1.5]}
+_CLEAN = {"wave": "saw", "attack": 0.004, "decay": 0.3, "sustain": 0.3, "release": 0.25, "gate": 1.0,
+          "filter": [3000, 900, 0.1, 0.12], "room": 0.4, "echo": [0.42, 0.22]}
+_BRASS = dict(_PAD, wave="saw", detune=10, attack=0.35, release=1.4, filter=[350, 2200, 0.25, 0.7], room=[0.6, 2.0],
+              echo=[0.5, 0.3])
+GENRES.update({
+    "rock ballad": {
+        "about": "Slow rock: a clean guitar picking the chords, a long bass, a lead that sings.", "tempo": 72,
+        "bass": "long", "arp": 2, "drums": "k.h.s.h.k.h.s.h.", "crash": True,
+        "sound": {"chords": dict(_CLEAN, volume=0.42),
+                  "lead": dict(_SOLO, drive=0.35, lowpass=0.35, vibrato=[5, 0.005], release=0.3, echo=[0.375, 0.3],
+                               room=0.4, volume=0.18),
+                  "inner": {"wave": "soft", "release": 0.25, "volume": 0.1},
+                  "bass": {"gate": 1.0, "sustain": 0.9, "volume": 0.33}},
+        "kit_sound": {"room": 0.3, "volume": 0.8}},
+    "metal march": {
+        "about": "Heavy and in step: chords on the beat, a marching snare, two guitars in thirds.", "tempo": 108,
+        "chords": "power", "low": 40, "riff": "x---x---x-x-x---", "bass": "chug", "arp": 1,
+        "drums": ["k...k...k...k...", "..s...ss..s..sss"], "crash": True,
+        "sound": {"chords": dict(_GUITAR, drive=0.9, lowpass=0.45, gate=0.9, sustain=0.8, volume=0.12),
+                  "lead": dict(_SOLO, drive=0.6, lowpass=0.25, vibrato=[5.5, 0.006], volume=0.2),
+                  "inner": dict(_SOLO, drive=0.5, lowpass=0.3, volume=0.09),
+                  "bass": {"wave": "saw", "drive": 0.4, "lowpass": 0.6, "gate": 0.9, "volume": 0.16}},
+        "kit_sound": {"volume": 0.55}},
+    "dark orchestral": {
+        "about": "Strings held wide, low strings driving in eighths, a horn for the tune, great drums.", "tempo": 76,
+        "chords": "pad", "bass": "eighths", "arp": 1, "drums": ["k.....k.....k...", "........t.t....."], "crash": True,
+        "sound": {"chords": dict(_STRINGS, volume=0.34),
+                  "lead": dict(_HORN, volume=0.7),
+                  "inner": dict(_STRINGS, attack=0.12, release=0.3, room=0.4, volume=0.16),
+                  "bass": dict(_SPICCATO, volume=1.0)},
+        "kit_sound": {"room": [0.6, 2.0], "volume": 0.5}},
+    "acid techno": {
+        "about": "A kick on every beat, hats between, and a bass line that squelches in sixteenths.", "tempo": 132,
+        "chords": "stab", "riff": "..x-..x-..x-..x-", "bass": "acid", "arp": 1, "inner": False,
+        "drums": ["k...k...k...k...", "..o...o...o...o.", "....c.......c..."],
+        "sound": {"chords": {"wave": "saw", "arp": None, "detune": 8, "attack": 0.004, "decay": 0.1, "sustain": 0.4,
+                             "release": 0.1, "gate": 0.6, "filter": [2200, 600, 0.3, 0.1], "room": 0.3, "volume": 0.6},
+                  "lead": {"wave": "square", "duty": 0.5, "attack": 0.005, "release": 0.15, "lowpass": 0.3, "echo": 3,
+                           "volume": 0.27},
+                  "bass": {"wave": "saw", "attack": 0.003, "decay": 0.1, "sustain": 0.6, "release": 0.04, "gate": 0.6,
+                           "filter": [2600, 260, 0.88, 0.1], "drive": 0.35, "volume": 0.3}},
+        "kit_sound": {"volume": 0.6}},
+    "neon noir": {
+        "about": "Rain on neon: slow synthesizer brass in seventh chords, a deep bass, a great deal of room.",
+        "tempo": 66, "chords": "pad", "sevenths": True, "bass": "long", "arp": 1,
+        "drums": "k...............t.......t.......", "air": (2, 3), "air_sound": "wind",
+        "sound": {"chords": dict(_BRASS, volume=0.28),
+                  "lead": {"wave": "saw", "duty": None, "detune": 6, "attack": 0.05, "decay": 0.2, "sustain": 0.75,
+                           "release": 0.7, "filter": [500, 2600, 0.3, 0.35], "vibrato": [4.5, 0.004],
+                           "echo": [0.45, 0.4], "room": [0.6, 2.0], "volume": 0.55},
+                  "inner": {"wave": "sine", "attack": 0.1, "release": 0.6, "volume": 0.13},
+                  "bass": {"wave": "triangle", "attack": 0.08, "sustain": 0.9, "release": 0.6, "gate": 1.0,
+                           "volume": 0.26}},
+        "kit_sound": {"room": [0.7, 2.0], "volume": 0.65}},
+})
+# The line an acid bass plays over one bar of sixteenths: semitones above the root (7 is the chord's fifth), None a rest.
+ACID = (0, 0, 12, 0, None, 0, 7, 0, 0, 12, 0, 0, None, 0, 12, 7)
 AIR = {"wave": "noise", "attack": 0.6, "decay": 0.05, "sustain": 1.0, "release": 0.8, "gate": 1.0, "lowpass": 0.35,
        "volume": 0.22}
+# Wind: the same noise far brighter at its source and far darker after the filter - even, without grain.
+WIND = dict(AIR, lowpass=0.9, volume=0.6)
+WIND_PITCH = 36                                             # semitones above the pitch of the plain air
 STEAM = {"wave": "noise", "attack": 0.005, "decay": 0.05, "sustain": 1.0, "release": 0.05, "gate": 1.0, "volume": 0.35}
 
 
@@ -394,16 +468,19 @@ def _strikes(riff, start, end, bar, beat):
     return [tuple(o) for o in out]
 
 
-def _voiced(chord, how):
-    """The pitches the chord voice plays for a chord (pitch classes, root first), as the style has it."""
+def _voiced(chord, how, scale=None):
+    """The pitches the chord voice plays for a chord (pitch classes, root first), as the style has it.
+    ``scale``: the pitch classes of the key in order, for a style that adds the seventh."""
     if how.get("chords") == "power":                        # root, fifth, octave: no third to be major or minor
         root = _place(chord[0], how.get("low", 40))
         return [root, _place(chord[2], root), root + 12]
+    if how.get("sevenths") and scale and len(chord) == 3 and chord[0] in scale:
+        chord = tuple(chord) + (scale[(scale.index(chord[0]) + 6) % 7],)       # the note of the key a seventh above
     if how.get("chords") == "pad":                          # spread wide: root, fifth, and the third above them
         root = _place(chord[0], 48)
         high = [_place(pc, root + 12) for pc in chord[1:2] + chord[3:]]
         return sorted([root, _place(chord[2], root)] + high)
-    return sorted(_place(pc, 55) for pc in chord)           # close, around middle C: for an arpeggio
+    return sorted(_place(pc, 55) for pc in chord)           # close, around middle C: for an arpeggio or a stab
 
 
 def chord_name(chord):
@@ -514,6 +591,7 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
     busy = len(tune_events) / max(1.0, total / float(grid.steps_per_beat)) >= 0.75      # tune notes per beat
     beat, bar = grid.steps_per_beat, grid.steps_per_bar
     bass, harmony = [], []
+    scale = [(tonic + step) % 12 for step in SCALE]
     riff = how.get("riff") or "x---------------"
     if how["bass"] == "walk":
         bass = _walk(runs(), beat, {(tonic + s) % 12 for s in SCALE})
@@ -524,6 +602,11 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
         end = start + steps
         if how["bass"] in ("walk", "pedal"):
             pass
+        elif how["bass"] == "acid":                         # sixteenths around the root: octave, fifth, a rest
+            for s in range(start, end):
+                up = ACID[s % bar % len(ACID)] if bar == 16 else (0, 12)[s % 2]
+                if up is not None:
+                    bass.append((s, 1, [fifth + (12 if fifth < root else 0) if up == 7 else root + up]))
         elif how["bass"] == "chug":                         # with the guitar, an octave below it
             low = max(28, _voiced(chord, how)[0] - 12)
             bass += [(s, d, [low]) for s, d in _strikes(riff, start, end, bar, beat)]
@@ -544,10 +627,10 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
                 bass.append((s, min(window, end - s), [fifth if s != start and (s // window) % 2 == 1 else root]))
         else:
             bass.append((start, steps, [root]))
-        if how.get("chords") == "power":
-            harmony += [(s, d, _voiced(chord, how)) for s, d in _strikes(riff, start, end, bar, beat)]
+        if how.get("chords") in ("power", "stab"):
+            harmony += [(s, d, _voiced(chord, how, scale)) for s, d in _strikes(riff, start, end, bar, beat)]
         else:
-            harmony.append((start, steps, _voiced(chord, how)))
+            harmony.append((start, steps, _voiced(chord, how, scale)))
     inner = []
     for start, steps, pitches in tune_events:               # the chord tone next below the tune, a third or more away
         chord = path[min(len(path) - 1, start // window)]
@@ -557,9 +640,11 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
             inner.append((start, steps, [under]))
     drums = map_drums(grid.drums)
     if not drums and how["drums"]:                          # the source had none: the style's own
-        pattern = how["drums"] if bar == 16 else "".join(
-            ("k" if s == 0 else "h" if s % beat == 0 else ".") for s in range(bar))
-        drums = [(s, [pattern[s % len(pattern)]]) for s in range(total) if pattern[s % len(pattern)] != "."]
+        layers = [how["drums"]] if isinstance(how["drums"], str) else list(how["drums"])
+        if bar != 16:                                       # not four-four: a kick on the first beat, hats on the others
+            layers = ["".join(("k" if s == 0 else "h" if s % beat == 0 else ".") for s in range(bar))]
+        drums = [(s, hits) for s in range(total)
+                 for hits in [[p[s % len(p)] for p in layers if p[s % len(p)] != "."]] if hits]
         if how.get("crash"):                                # where a phrase begins
             for s in (phrases or range(0, total, PHRASE * bar)):
                 drums = [(at, hits + ["o"] if at == s else hits) for at, hits in drums]
@@ -570,11 +655,13 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
     if how.get("air"):                                      # a bed of noise that swells and fades, two bars at a time
         low, high = how["air"]
         air = []
+        wind = how.get("air_sound") == "wind"
+        dark, bright = (60.0 + WIND_PITCH, 67.0 + WIND_PITCH) if wind else (60.0, 70.0)
         for s in range(0, total, 2 * bar):
-            for a, b, bend in ((s, s + bar, ((60.0, 70.0), (low, high))), (s + bar, s + 2 * bar, ((70.0, 60.0), (high, low)))):
+            for a, b, bend in ((s, s + bar, ((dark, bright), (low, high))), (s + bar, s + 2 * bar, ((bright, dark), (high, low)))):
                 if a < total:
                     air.append((a, min(b, total) - a, [int(bend[0][0])], bend))
-        tracks["air"] = (air, dict(AIR))
+        tracks["air"] = (air, dict(WIND if wind else AIR))
     if how.get("steam"):                                    # a hiss that falls, on the last beat of every second bar
         tracks["steam"] = ([(s - beat, beat, [86], ((86.0, 54.0), (6, 1))) for s in range(2 * bar, total + 1, 2 * bar)],
                            dict(STEAM))
@@ -586,7 +673,7 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
             tune_events = list(tune_events) + [(close, bar, [min((_place(key_note, last[2][0] - 6),), key=abs)])]
         low = max(28, _voiced(home, how)[0] - 12) if how["bass"] == "chug" else _place(key_note, 36)
         bass.append((close, bar, [low]))
-        harmony.append((close, bar, _voiced(home, how)))
+        harmony.append((close, bar, _voiced(home, how, scale)))
         if drums:
             drums.append((close, ["k", "o"]))
         remarks["ending"] = True

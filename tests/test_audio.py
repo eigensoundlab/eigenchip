@@ -638,6 +638,20 @@ class HumTests(unittest.TestCase):
         self.assertEqual(notes[6][:2], (6.0, 1.0))                                # a real rest stays a rest
         self.assertEqual(notes[7][0], 8.0)
 
+    def test_a_coarser_grid_forgives_more(self):
+        from eigenchip.audio import hum
+        samples, rate = hummed("g4:.5 a4:.5 b4 d5:.5 b4:.5 a4 | g4:2 e4 d4", 104, noise=0.05, scoop=2.5)
+        fine, _tempo = hum.notes(samples, rate, 100)
+        eighths, _tempo = hum.notes(samples, rate, 100, None, 0.5)
+        quarters, _tempo = hum.notes(samples, rate, 100, None, 1.0)
+        self.assertEqual([p for _s, _d, p in fine], [67, 69, 71, 74, 71, 69, 67, 64, 62])
+        self.assertEqual([(s, p) for s, _d, p in eighths], [(s, p) for s, _d, p in fine])   # eighths hold this tune
+        self.assertTrue(all(s % 0.5 == 0 and d % 0.5 == 0 for s, d, _p in eighths))
+        self.assertTrue(all(s % 1 == 0 and d % 1 == 0 for s, d, _p in quarters))
+        self.assertLess(len(quarters), len(fine))                                 # quarters cannot write the quick notes
+        with self.assertRaisesRegex(ValueError, "sixteenths"):
+            hum.notes(samples, rate, 100, None, 0.33)
+
     def test_nothing_hummed_and_the_session(self):
         from eigenchip.app import Session
         from eigenchip.audio import hum

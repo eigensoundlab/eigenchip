@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.14.0 - 2026-11-17
+
+An orchestra, a studio, five more genres - and the tune's sound, quantising, dark mode.
+
+- **Five more genres**: **dark orchestral** (a section of strings held wide, low strings
+  driving in eighths, a horn for the tune, great drums in a hall), **acid techno** (a kick
+  on every beat, hats between, stabs off the beat and a bass line in sixteenths through a
+  resonant filter that closes on every note), **rock ballad** (a clean guitar picking the
+  chords, a long bass, a lead that sings), **metal march** (chords on the beat, a marching
+  snare, two guitars in thirds) and **neon noir** (slow synthesizer brass in seventh
+  chords, a deep bass, a great deal of room).
+- They rest on **three new instrument settings** of CLIo's synthesizer (2.3; the page plays
+  them already): `detune` - a section instead of one player; `filter` - a resonant
+  low-pass that moves over every note; `room` - early echoes around a track. An older
+  CLIo plays such a song with the same notes and plainer sounds.
+- **The soundscape's air is wind now**: the same noise far brighter at its source and far
+  darker after the filter, and half as loud - as loud as the ambient's, which stays.
+- **Another sound for the tune** (*Tune played*: soft, flute, strings), for any arranger,
+  when the square lead is too sharp.
+- **A song without its tune.** What is switched off on the page is left out of the song
+  that is taken away (`Session.song_json(mute)`), as it already was of the sound: a
+  backing for something else to play over.
+- **Quantising.** Hummed and played notes go on sixteenths, eighths or quarter notes, as
+  chosen; *Tidy the notes* puts a tune that is on the roll already on that note value.
+- **Record in time.** One bar is counted in, a click goes on, and every key - the
+  computer's or a MIDI keyboard's - is written where and as long as it was played.
+- **Dark mode**, by the system's setting or the switch at the top; the screen with the
+  roll is the same in both.
+- Drum patterns can be laid over each other; pads can carry the seventh of the key.
+
+Measured with [Playhead](https://github.com/eigensoundlab/playhead) as a judge that is
+not eigenchip (`docs/research-log.md`): its harshness of timbre agrees with the ear - the
+square lead 0.12, soft 0.03, flute 0.02 - and its loudness explains the rough air (6 dB
+above the ambient's); it hears the set tempo exactly in 8 of 12 arranged pieces; and
+started from the tempo it hears, a hum at any tempo from 60 to 150 is written down right
+where eigenchip alone needs the tempo set within a fifth. None of the new sounds has been
+listened to by anyone.
+
 ## 0.13.0 - 2026-11-17
 
 Genres: rock, metal, doom, industrial, ambient, soundscape - and modes.

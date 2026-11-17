@@ -16,6 +16,7 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 
 const edit = { on: false, notes: [], sections: [], length: 4, cursor: 0, sel: -1, drag: null, timer: 0, octave: 4, midi: null, audio: null };
 const hum = { rec: null, chunks: [], stream: null, timer: 0 };
+const rec = { on: false, t0: 0, beat: 0.5, from: 0, held: new Map(), notes: [], ticker: 0, next: 0, perBar: 4 };   // playing in time
 const state = {
   engine: null,          // {numpy, version} once Python is up
   source: null,          // {id, name, file?, example?, bytes?, midi}
@@ -229,7 +230,8 @@ async function convert(arrangeOnly) {
     status("Arranging…");
     state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value),
       expression: $("expression").value, style: $("style").value || "plain", chords: state.chords,
-      form: state.source.tune ? state.form : null, ending: $("ending").checked, key: state.key || null });
+      form: state.source.tune ? state.form : null, ending: $("ending").checked, key: state.key || null,
+      lead: $("lead-sound").value || null });
     show();
     status("Making the chip sound…");
     await sound();
@@ -341,6 +343,12 @@ const muted = () => [...state.mute].filter((id) => state.view && state.view.inst
 function hear() {
   const box = $("hear"), v = state.view;
   box.innerHTML = "";
+  const sounds = $("lead-sound");
+  $("lead-box").hidden = !v || !v.leads;
+  if (v && v.leads && !sounds.options.length) {
+    sounds.append(new Option("as the style has it", ""));
+    for (const [name, about] of v.leads) { const o = new Option(name, name); o.title = about; sounds.append(o); }
+  }
   if (!v || v.instruments.length < 2) return;
   for (const id of v.instruments) {
     const tick = document.createElement("input");
@@ -476,7 +484,7 @@ function show() {
     parts.push(`Up to ${b(v.polyphony[1])} notes sounded at once; the chip version has ${b(v.voices.length)} voice${v.voices.length === 1 ? "" : "s"}` +
       `${v.drums.length ? " and drums" : ""}, in ${v.patterns[0]} patterns of which ${v.patterns[1]} differ.`);
     if (v.needs && v.needs.includes("2.1")) parts.push("The song uses levels or slides, which need CLIo 2.1; choose \u201cplainly\u201d for one that CLIo 2.0 plays.");
-    if (v.driven) parts.push("Its overdrive needs CLIo 2.3; an older CLIo plays the same notes clean.");
+    if (v.driven) parts.push("Its sounds use overdrive, detune, a moving filter or a room, which need CLIo 2.3; an older CLIo plays the same notes with plainer sounds.");
   }
   $("facts").innerHTML = parts.join(" ");
   $("against").textContent = {
@@ -866,7 +874,18 @@ $("roll").addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") { e.preventDefault(); seek(Math.min(total(), musicTime() + bar)); }
   if (e.key === "ArrowLeft") { e.preventDefault(); seek(Math.max(0, musicTime() - bar)); }
 });
-$("dl-song").addEventListener("click", () => state.view && save(state.view.song_name + ".json", new Blob([state.view.song_json], { type: "application/json" })));
+$("dl-song").addEventListener("click", async () => {       // what is switched off is left out of the song
+  if (!state.view) return;
+  let text = state.view.song_json;
+  try {
+    if (muted().length) text = JSON.stringify(await ask("song", { mute: muted() }), null, 2) + "\n";
+  } catch (err) {
+    return status(err.message, true);
+  }
+  save(state.view.song_name + (muted().length ? "-part" : "") + ".json", new Blob([text], { type: "application/json" }));
+});
+$("lead-sound").addEventListener("change", () => convert(true));
+$("theme").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
 $("dl-wav").addEventListener("click", () => state.chipBytes && save(state.view.song_name + "-chip.wav", new Blob([state.chipBytes], { type: "audio/wav" })));
 $("dl-midi").addEventListener("click", async () => {
   if (!state.view || state.busy) return;
@@ -1010,7 +1029,7 @@ async function heardHum() {
     status("Writing down what was hummed…");
     const got = await decode(await blob.arrayBuffer(), 60);
     const { tempo, meter } = tuneMeta();
-    facts = await ask("open_hum", { rate: RATE, tempo, meter }, got.samples);
+    facts = await ask("open_hum", { rate: RATE, tempo, meter, grid: Number($("snap").value) / 4 }, got.samples);
   } catch (err) {
     status(err.message, true);
   } finally {
@@ -1043,6 +1062,7 @@ const snapped = (step) => Math.floor(step / edit.length) * edit.length;
 
 function playNote(pitch) {                                  // a key was pressed, here or on a MIDI keyboard: write it down
   if (!edit.on || pitch < 12 || pitch > 119) return;
+  if (rec.on) return keyDown(pitch);
   beep(pitch);
   edit.notes.push([edit.cursor, edit.length, pitch]);
   edit.sel = edit.notes.length - 1;
@@ -1050,6 +1070,107 @@ function playNote(pitch) {                                  // a key was pressed
   commit();
   const roll = $("roll"), x = KEYS_W + edit.cursor * state.geometry.px;
   if (x > roll.scrollLeft + roll.clientWidth - 40) roll.scrollLeft = x - roll.clientWidth / 2;
+}
+
+// ---------------------------------------------------------------------- playing a tune in, in time
+// One bar is counted in, the click goes on, and every key - the computer's or a MIDI keyboard's - is written where
+// and as long as it was played, on the note value chosen for hummed and played notes.
+function click(at, first) {
+  const ctx = edit.audio, osc = ctx.createOscillator(), gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.value = first ? 1760 : 1175;
+  gain.gain.setValueAtTime(first ? 0.09 : 0.05, at);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.04);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(at);
+  osc.stop(at + 0.05);
+}
+
+function record(on) {
+  if (on === rec.on) return;
+  if (!on) {
+    clearInterval(rec.ticker);
+    for (const pitch of [...rec.held.keys()]) keyUp(pitch);
+    rec.on = false;
+    const grid = Number($("snap").value), late = (edit.audio.outputLatency || 0) + (edit.audio.baseLatency || 0);
+    let count = 0;
+    for (const [down, up, pitch] of rec.notes) {
+      const at = ((down - late - rec.t0) / rec.beat) * 4;                 // in sixteenths from the first beat
+      if (at < -grid / 2) continue;                                       // played while it was being counted in
+      const start = Math.max(0, Math.round(at / grid) * grid);
+      edit.notes.push([rec.from + start, Math.max(grid, Math.round((((up - down) / rec.beat) * 4) / grid) * grid), pitch]);
+      edit.cursor = Math.max(edit.cursor, rec.from + start + grid);
+      count++;
+    }
+    edit.sel = -1;
+    $("rec").setAttribute("aria-pressed", "false");
+    $("rec").textContent = "Record in time";
+    if (!count) { status("Nothing was played."); return draw(); }
+    state.after = `${count} note${count === 1 ? "" : "s"} written down as played, on ${$("snap").selectedOptions[0].text}. Mend them on the roll.`;
+    return commit(true);
+  }
+  if (state.busy) return status("Still working on the last piece. Try again in a moment.");
+  stop();
+  const { tempo, meter } = tuneMeta();
+  edit.audio = edit.audio || new (window.AudioContext || window.webkitAudioContext)();
+  if (edit.audio.state === "suspended") edit.audio.resume();
+  const bar = (meter[0] * 16) / meter[1];
+  rec.beat = 60 / tempo;
+  rec.perBar = Math.max(1, Math.round((meter[0] * 4) / meter[1]));
+  rec.from = Math.ceil(edit.cursor / bar) * bar;                          // from the next bar line on
+  rec.t0 = edit.audio.currentTime + 0.15 + rec.perBar * rec.beat;        // after one bar of clicks
+  rec.next = -rec.perBar;
+  rec.notes = [];
+  rec.held.clear();
+  rec.on = true;
+  const ahead = () => {                                                   // keep the next clicks ordered a little ahead
+    while (rec.t0 + rec.next * rec.beat < edit.audio.currentTime + 0.4) {
+      click(rec.t0 + rec.next * rec.beat, ((rec.next % rec.perBar) + rec.perBar) % rec.perBar === 0);
+      rec.next++;
+    }
+    if (rec.next > 64 * rec.perBar) record(false);                        // sixty-four bars are enough for one go
+  };
+  ahead();
+  rec.ticker = setInterval(ahead, 100);
+  edit.cursor = rec.from;
+  $("rec").setAttribute("aria-pressed", "true");
+  $("rec").textContent = "Stop recording";
+  status(`Recording at ${tempo} beats a minute: one bar is counted in, then play. The notes go on ${$("snap").selectedOptions[0].text}.`);
+  draw();
+  $("roll").focus();
+}
+
+function keyDown(pitch) {
+  if (rec.held.has(pitch)) return;
+  rec.held.set(pitch, edit.audio.currentTime);
+  beep(pitch);
+}
+
+function keyUp(pitch) {
+  const down = rec.held.get(pitch);
+  if (!rec.on || down === undefined) return;
+  rec.held.delete(pitch);
+  rec.notes.push([down, edit.audio.currentTime, pitch]);
+}
+
+function tidy() {                                           // every note on the chosen note value
+  const grid = Number($("snap").value), seen = new Set();
+  edit.notes = edit.notes
+    .map(([s, d, p]) => [Math.round(s / grid) * grid, Math.max(grid, Math.round(d / grid) * grid), p])
+    .filter(([s, , p]) => !seen.has(s + ":" + p) && seen.add(s + ":" + p))
+    .sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  edit.sel = -1;
+  edit.cursor = Math.max(0, ...edit.notes.map((n) => n[0] + n[1]));
+  if (!edit.notes.length) return draw();
+  state.after = `Every note is on ${$("snap").selectedOptions[0].text} now.`;
+  return commit(true);
+}
+
+function setTheme(theme, keep) {
+  document.documentElement.dataset.theme = theme;
+  $("theme").textContent = theme === "dark" ? "Light" : "Dark";
+  $("theme").setAttribute("aria-pressed", String(theme === "dark"));
+  if (keep) try { localStorage.setItem("eigenchip-theme", theme); } catch (err) { /* not kept: it lasts for this visit */ }
 }
 
 function editKey(e) {
@@ -1100,7 +1221,11 @@ async function listenToMidi() {
   }
   const hook = () => {
     for (const input of edit.midi.inputs.values()) {
-      input.onmidimessage = (m) => { if ((m.data[0] & 0xf0) === 0x90 && m.data[2] > 0) playNote(m.data[1]); };
+      input.onmidimessage = (m) => {
+        const kind = m.data[0] & 0xf0;
+        if (kind === 0x90 && m.data[2] > 0) playNote(m.data[1]);
+        else if (kind === 0x80 || kind === 0x90) keyUp(m.data[1]);       // a key let go: only a recording cares
+      };
     }
     midiNote();
   };
@@ -1108,7 +1233,14 @@ async function listenToMidi() {
   hook();
 }
 
-$("edit").addEventListener("click", () => setEditing(!edit.on));
+$("edit").addEventListener("click", () => { record(false); setEditing(!edit.on); });
+$("rec").addEventListener("click", () => record(!rec.on));
+$("edit-tidy").addEventListener("click", tidy);
+$("roll").addEventListener("keyup", (e) => {
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (rec.on && key in KEY_PITCH) keyUp(12 * (edit.octave + 1) + KEY_PITCH[key]);
+});
+setTheme(document.documentElement.dataset.theme || "light", false);
 $("edit-length").addEventListener("change", (e) => { edit.length = Number(e.target.value); $("roll").focus(); });
 $("edit-clear").addEventListener("click", () => { edit.notes = []; edit.sections = []; edit.sel = -1; edit.cursor = 0; draw(); status("The roll is empty. Click on it to add a note, or play one."); });
 $("tune-tempo").addEventListener("change", () => { if (edit.on) commit(true); });

@@ -156,14 +156,18 @@ everything else exists to feed them and to judge them.
 rest. On the page there are three ways to give it a tune of your own: *Write a tune*
 takes a melody as text, *Edit the tune on the roll* lets you click, drag and play it in
 (the computer's keys, or a MIDI keyboard where the browser allows one) - also the lead of
-a piece you converted - and *Hum it instead* records the microphone and writes down what
-you hummed, sang or whistled, for you to mend on the roll.
+a piece you converted - *Record in time* counts a bar in and writes down what you play
+against a click, and *Hum it instead* records the microphone and writes down what you
+hummed, sang or whistled, for you to mend on the roll. Played and hummed notes are put on
+sixteenths, eighths or quarter notes, as you choose.
 
 The arrangement is then shaped by
 
 - a **style** (plain, ballad, march, drive, waltz, walk - a walking bass), a **genre**
-  (rock, metal, doom, industrial: power chords in a riff through overdrive; ambient,
-  soundscape: held pads, a drone, air and no drums) or a **mood** (calm, mystery, dark,
+  (rock, metal, doom, industrial, metal march: power chords in a riff through overdrive;
+  rock ballad; dark orchestral: strings, a horn, great drums; acid techno; neon noir: slow
+  synthesizer brass in seventh chords; ambient, soundscape: held pads, a drone, air and
+  no drums) or a **mood** (calm, mystery, dark,
   tense, battle, heroic, shop, space, victory, defeat: the moods of CLIo's own composer,
   each with its tempo, drums and sound for the tune);
 - a **form**: `||` in the text, or a double click on a bar number of the roll, begins a
@@ -193,9 +197,14 @@ The harmony is chosen half bar by half bar from the chords of one key, major or 
 the bar lines and comes to rest at the ends of phrases. It does not modulate, and it does
 not know secondary dominants or borrowed chords; write those into the chord line.
 
-The overdrive of the guitar genres is an instrument setting, `"drive"`, that CLIo's
-synthesizer will have from 2.3 (`web/vendor/clio`); an older CLIo plays such a song with
-the same notes, clean.
+The sounds of the genres use four instrument settings that CLIo's synthesizer will have
+from 2.3 (`web/vendor/clio`): `drive` (overdrive), `detune`, `filter` (a resonant low-pass
+that moves over each note) and `room`. An older CLIo plays such a song with the same
+notes and plainer sounds.
+
+On the page the tune can be given another sound (*Tune played*: soft, flute, strings),
+any voice can be switched off - and is then left out of the song and the sound you take
+away, so a backing without its tune is two clicks - and there is a dark mode.
 
 ## What has been found so far
 

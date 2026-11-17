@@ -95,15 +95,17 @@ class Session:
         self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
 
-    def open_hum(self, samples, rate=22050, tempo=100.0, meter=(4, 4), title="A hummed tune", progress=None):
+    def open_hum(self, samples, rate=22050, tempo=100.0, meter=(4, 4), title="A hummed tune", progress=None,
+                 grid=0.25):
         """Open a tune that was hummed, sung or whistled: mono float samples (``eigenchip/audio/hum.py``).
-        The facts say which tempo the humming was found to have, near the one given."""
+        The facts say which tempo the humming was found to have, near the one given.  ``grid``: the note value
+        in beats that every note is put on - 0.25 a sixteenth, 0.5 an eighth, 1 a quarter."""
         from .audio import hum, need_numpy
         np = need_numpy()
         samples = np.ascontiguousarray(np.asarray(samples, dtype=np.float32).ravel())
         if not len(samples):
             raise ValueError("Nothing was recorded.")
-        found, tempo = hum.notes(samples, int(rate), float(tempo), progress)
+        found, tempo = hum.notes(samples, int(rate), float(tempo), progress, float(grid))
         facts = self.open_tune(tempo=round(tempo), meter=meter, title=title, notes=found)
         facts["hummed"] = len(found)
         facts["written"] = [list(n) for n in found]
@@ -201,7 +203,7 @@ class Session:
     # arranging
     # ------------------------------------------------------------------ #
     def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4, expression="full",
-                style="plain", chords=None, form=None, ending=False, key=None):
+                style="plain", chords=None, form=None, ending=False, key=None, lead=None):
         """Arrange the opened piece. Returns everything the page draws and offers for download.
 
         ``expression`` is ``full`` (levels and slides; the song needs CLIo 2.1)
@@ -211,8 +213,12 @@ class Session:
         played once) and ``key`` (``"Am"``, when the key found is not the one
         meant) are for ``expand``, which writes parts instead of reducing them.
         ``form`` (``"A A B A"``) is for a tune of the user's own: the order in
-        which its parts are played.
+        which its parts are played.  ``lead`` names another sound for the tune
+        (``arrangers.common.LEADS``: soft, flute, strings), for any arranger.
         """
+        from .arrangers.common import LEADS
+        if lead and lead not in LEADS:
+            raise ValueError("Unknown sound for the tune '%s'. Available: %s" % (lead, ", ".join(LEADS)))
         from .arrangers import expand
         written = {"style": style, "chords_given": expand.parse_chords(chords) if chords else None,
                    "ending": bool(ending), "key": expand.parse_key(key)}
@@ -231,6 +237,8 @@ class Session:
         table = []
         for name in ARRANGERS:
             arr = arrange(grid, name, int(voices), **(written if name == "expand" else {}))
+            if lead and arr.voice("lead") is not None:
+                arr.voice("lead").instrument = dict(LEADS[lead]["sound"])
             song = clio.to_song(arr, grid, int(bars_per_pattern), expression=expression)
             res = metrics.evaluate(judge, arr, song, truth)
             res["compression"] = metrics.evaluate(grid, arr, song)["compression"]
@@ -285,7 +293,8 @@ class Session:
             "styles": [[name, how["about"]] for name, how in expand.STYLES.items()],
             "genres": [[name, how["about"], how["tempo"]] for name, how in expand.GENRES.items()],
             "moods": [[name, how["about"], how["tempo"]] for name, how in expand.MOODS.items()],
-            "driven": any(inst.get("drive") for inst in song["instruments"].values()),
+            "leads": [[name, how["about"]] for name, how in LEADS.items()], "lead": lead or "",
+            "driven": any(inst.get(key) for inst in song["instruments"].values() for key in clio.SHAPED),
             **self._form(grid),
         }
 
@@ -315,6 +324,25 @@ class Session:
             "parts": [[name, int(round(at * spb)), int(round(start * spb)), int(round(beats * spb))]
                       for name, at, start, beats in self.score.info.get("parts") or []],
         }
+
+    def song_json(self, mute=()):
+        """The arranged song as JSON text, without the instruments named in ``mute``: what is switched off on the
+        page is left out of the song that is taken away - a backing without its tune, say."""
+        if self.song is None:
+            raise ValueError("Arrange the piece first.")
+        mute = set(mute or ())
+        if not mute:
+            return clio.dumps(self.song)
+        left = [name for name in self.song["instruments"] if name not in mute]
+        if not left:
+            raise ValueError("Every voice is switched off: there is nothing to take away.")
+        patterns = {}
+        for name, tracks in self.song["patterns"].items():
+            kept = {t: text for t, text in tracks.items() if t not in mute}
+            if not kept:                                    # a stretch where only muted voices played still takes its time
+                kept = {left[0]: ".:%d" % clio.track_length(next(iter(tracks.values())))}
+            patterns[name] = kept
+        return clio.dumps(dict(self.song, instruments={n: self.song["instruments"][n] for n in left}, patterns=patterns))
 
     def chip_wav(self, synth, mute=()):
         """The arranged song played by CLIo's synthesizer (``engine.audio.synth``), as WAV bytes.

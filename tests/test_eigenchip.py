@@ -442,29 +442,64 @@ class ExpandTests(unittest.TestCase):
         from eigenchip.arrangers import expand
         from eigenchip.readers.tune import read_tune
         grid = quantize(read_tune("a4 c5 e5 c5 | d5 f5 e5:2 | a4 c5 e5 a5 | g#5 e5 a5:2", 100))
-        self.assertEqual(list(expand.GENRES), ["rock", "metal", "doom", "industrial", "ambient", "soundscape"])
+        self.assertEqual(list(expand.GENRES), ["rock", "metal", "doom", "industrial", "ambient", "soundscape",
+                                               "rock ballad", "metal march", "dark orchestral", "acid techno", "neon noir"])
         self.assertFalse(set(expand.GENRES) & (set(expand.STYLES) | set(expand.MOODS)))
         tune = [(s, tuple(p)) for s, _d, p in arrange(grid, "expand", 4).voice("lead").events]
+        kinds = {}
         for name, how in expand.GENRES.items():
             arr = arrange(grid, "expand", 4, style=name, ending=True)
             song = clio.to_song(arr, grid)
             self.assertEqual(clio.validate(song), [], name)
             self.assertEqual([(s, tuple(p)) for s, _d, p in arr.voice("lead").events][:len(tune)], tune, name)   # the tune is kept
             self.assertEqual(bool(arr.drums), bool(how["drums"]), name)
-            self.assertNotIn("arp", song["instruments"]["chords"], name)          # a guitar or a pad: no arpeggio
             self.assertTrue(40 <= how["tempo"] <= 200 and how["about"], name)
-            chords = arr.voice("chords").events
-            if how["chords"] == "power":                                          # root, fifth, octave: no third
+            chords, sound = arr.voice("chords").events, song["instruments"]["chords"]
+            kind = how.get("chords", "arp")
+            kinds.setdefault(kind, []).append(name)
+            self.assertEqual("arp" in sound, kind == "arp", name)                 # only a picked guitar rolls its chords
+            if kind == "power":                                                   # root, fifth, octave: no third
                 self.assertTrue(all([p - ps[0] for p in ps] == [0, 7, 12] for _s, _d, ps in chords), name)
                 self.assertTrue(all(how["low"] <= ps[0] < how["low"] + 12 for _s, _d, ps in chords), name)
-                self.assertGreater(song["instruments"]["chords"]["drive"], 0.5, name)
-                self.assertIn("2.3 for the overdrive", song["needs"], name)
-            else:                                                                 # a pad: held, spread over more than an octave
+                self.assertGreater(sound["drive"], 0.5, name)
+            elif kind == "pad":                                                   # held, spread over more than an octave
                 self.assertTrue(all(ps[-1] - ps[0] > 12 for _s, _d, ps in chords), name)
-                self.assertGreaterEqual(song["instruments"]["chords"]["attack"], 0.5, name)
-                self.assertNotIn("drive", song["instruments"]["chords"], name)
-                self.assertIn("air", song["instruments"], name)
-                self.assertNotIn("overdrive", song["needs"], name)
+                self.assertGreaterEqual(sound["attack"], 0.25, name)
+                self.assertNotIn("drive", sound, name)
+            shaped = any(inst.get(key) for inst in song["instruments"].values() for key in clio.SHAPED)
+            self.assertEqual("CLIo 2.3" in song.get("needs", ""), shaped, name)
+            self.assertEqual(shaped, name not in ("ambient", "soundscape"), name)
+        self.assertEqual(kinds, {"power": ["rock", "metal", "doom", "industrial", "metal march"],
+                                 "pad": ["ambient", "soundscape", "dark orchestral", "neon noir"],
+                                 "arp": ["rock ballad"], "stab": ["acid techno"]})
+        # an orchestra: a section of strings (detuned, opening), low strings in eighths, drums laid over each other
+        dark = arrange(grid, "expand", 4, style="dark orchestral")
+        song = clio.to_song(dark, grid)
+        self.assertEqual((song["instruments"]["chords"]["detune"], song["instruments"]["chords"]["filter"][:2]), (9, [600, 2600]))
+        self.assertEqual([d for _s, d, _p in dark.voice("bass").events[:4]], [2, 2, 2, 2])
+        self.assertEqual([dict(dark.drums).get(s) for s in (0, 6, 8, 10)], [["k", "o"], ["k"], ["t"], ["t"]])
+        march = dict(arrange(grid, "expand", 4, style="metal march").drums)
+        self.assertEqual([march.get(s) for s in (0, 2, 4, 6, 7)], [["k", "o"], ["s"], ["k"], ["s"], ["s"]])
+        # acid: sixteenths around the root with rests, through a resonant filter that closes on every note
+        acid = arrange(grid, "expand", 4, style="acid techno")
+        line = acid.voice("bass").events
+        self.assertEqual([s for s, _d, _p in line][:8], [0, 1, 2, 3, 5, 6, 7, 8])  # a rest on the fifth sixteenth
+        self.assertEqual([p[0] for _s, _d, p in line][:7], [45, 45, 57, 45, 45, 52, 45])   # a: root, octave, the fifth e
+        squelch = clio.to_song(acid, grid)["instruments"]["bass"]["filter"]
+        self.assertTrue(squelch[0] > 4 * squelch[1] and squelch[2] > 0.8)
+        self.assertEqual([s for s, _d, _p in acid.voice("chords").events][:4], [2, 6, 10, 14])     # stabs off the beat
+        self.assertIsNone(acid.voice("inner"))
+        self.assertEqual(dict(acid.drums)[4], ["k", "c"])                         # the clap falls with the kick
+        self.assertEqual(dict(acid.drums)[2], ["o"])
+        # neon noir: every chord has its seventh, from the key
+        noir = arrange(grid, "expand", 4, style="neon noir")
+        self.assertTrue(all(len(ps) == 4 for _s, _d, ps in noir.voice("chords").events))
+        self.assertEqual(sorted(p % 12 for p in noir.voice("chords").events[0][2]), [0, 4, 7, 9])  # A minor seventh
+        # the soundscape's air is wind: brighter at the source, much darker after the filter, and quieter than it was
+        air, sound = arrange(grid, "expand", 4, style="soundscape").tracks["air"]
+        self.assertEqual((air[0][2], air[0][3][1], sound["lowpass"]), ([96], (2, 5), 0.9))
+        air, sound = arrange(grid, "expand", 4, style="ambient").tracks["air"]
+        self.assertEqual((air[0][2], sound["lowpass"]), ([60], 0.35))             # the ambient's air is as it was
         strikes = lambda name: [s for s, _d, _p in arrange(grid, "expand", 4, style=name).voice("chords").events if s < 16]
         self.assertEqual(strikes("rock"), [0, 2, 4, 6, 8, 10, 12, 14])            # eighths
         self.assertEqual(strikes("metal"), [0, 2, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15])     # a gallop
@@ -478,10 +513,10 @@ class ExpandTests(unittest.TestCase):
         self.assertEqual({p[0] for _s, _d, p in scape.voice("bass").events}, {45})      # a drone on the tonic, a
         self.assertIsNone(scape.voice("inner"))
         air, sound = scape.tracks["air"]
-        self.assertEqual((air[0][:2], air[0][3][1], air[1][3][1]), ((0, 16), (3, 7), (7, 3)))   # it swells and fades
+        self.assertEqual((air[0][:2], air[0][3][1], air[1][3][1]), ((0, 16), (2, 5), (5, 2)))   # it swells and fades
         self.assertEqual(sound["wave"], "noise")
         song = clio.to_song(scape, grid)
-        self.assertIn("@3>7:16", song["patterns"][song["sequence"][0]]["air"])
+        self.assertIn("@2>5:16", song["patterns"][song["sequence"][0]]["air"])
         plain = clio.to_song(scape, grid, expression="plain")                     # for CLIo 2.0: the air without its swell
         self.assertNotIn(">", plain["patterns"][plain["sequence"][0]]["air"])
         self.assertNotIn("needs", plain)

@@ -153,8 +153,12 @@ def _fit(onsets, tempo):
     return best
 
 
-def notes(samples, rate=RATE, tempo=100.0, progress=None):
-    """``(notes, tempo)``: the hummed tune as ``(start, length, pitch)`` in beats, and the tempo it was hummed at."""
+def notes(samples, rate=RATE, tempo=100.0, progress=None, grid=GRID):
+    """``(notes, tempo)``: the hummed tune as ``(start, length, pitch)`` in beats, and the tempo it was hummed at.
+    ``grid``: the note value in beats that starts and lengths are put on - a sixteenth unless a coarser one is
+    asked for (0.5 an eighth, 1 a quarter), which forgives a voice more and cannot write quick notes."""
+    if grid not in (0.25, 0.5, 1.0):
+        raise ValueError("Notes are put on sixteenths (0.25), eighths (0.5) or quarters (1) of a beat.")
     samples, clock = in_tune(samples, rate)
     spec = Spectrum(samples, rate, progress=progress)
     heard = [[clock(on), clock(off), pitch] for on, off, pitch in _mend(transcribe_mono(spec, low=LOW, high=HIGH))]
@@ -171,8 +175,8 @@ def notes(samples, rate=RATE, tempo=100.0, progress=None):
         shift -= 12
     out = []
     for on, off, pitch in heard:
-        start = round((on - first) / beat / GRID) * GRID
-        length = max(GRID, round((off - on) / beat / GRID) * GRID)
+        start = round((on - first) / beat / grid) * grid
+        length = max(grid, round((off - on) / beat / grid + (0.25 if grid > GRID else 0.0)) * grid)   # a voice lets go early
         if out and start <= out[-1][0]:                     # two on one sixteenth: the longer one stays
             if length > out[-1][1]:
                 out[-1] = [out[-1][0], length, pitch + shift]
@@ -183,6 +187,6 @@ def notes(samples, rate=RATE, tempo=100.0, progress=None):
         out.append([start, length, pitch + shift])
     for i, note in enumerate(out):                          # before a rest and at the end a voice lets go early:
         room = out[i + 1][0] - note[0] - note[1] if i + 1 < len(out) else GRID
-        if room >= GRID and note[1] % (2 * GRID) == GRID and note[1] > GRID:
+        if grid == GRID and room >= GRID and note[1] % (2 * GRID) == GRID and note[1] > GRID:
             note[1] += GRID                                 # three sixteenths were meant as a half beat
     return [tuple(n) for n in out], found

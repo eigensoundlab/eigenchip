@@ -3,6 +3,57 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-17 - Playhead as a judge; an orchestra and a studio
+
+**The verdict by ear on 0.13.0** (as far as it was given): the minor tune in *ambient*
+"is nice"; in *soundscape* "the noise is maybe too rough". On the app: the lead "often
+seems to be too harsh and maybe sometimes false (tested when humming, good for chiplike
+sound)... usually better to turn it off in many cases".
+
+**Can Playhead help, and can that be measured?** Playhead (`eigensoundlab/playhead`)
+analyses a sound into tempo and beats, sections, and curves on fixed scales - among them
+loudness (LUFS) and a harshness of timbre. It shares no code with eigenchip, so it can
+judge what eigenchip makes. Three questions, each with a number:
+
+1. *Does it hear what the ear heard?* The tune alone, in each sound - harshness of
+   timbre: the square lead 0.120, strings 0.067, soft 0.026, flute 0.020. The ear said
+   the lead is harsh; so does the meter, by a factor of five. The air alone: the
+   soundscape's of 0.13 at -29.3 LUFS, the ambient's at -35.4, with the same harshness of
+   timbre (0.04): the "rough" noise was the same noise 6 dB louder. The new wind is at
+   -35.9. So the meter agrees with the ear both times the ear has spoken, and it says
+   *why* differently each time (timbre; level). On whole mixes it hardly moves (0.02 to
+   0.04): it is a meter for one voice at a time.
+2. *Does the beat come through an arrangement?* Twelve arrangements of one tune with the
+   tempo known: Playhead hears it exactly (within 0.5 %) and calls it reliable in eight
+   (heroic, rock, metal, industrial, metal march, rock ballad, dark orchestral, acid
+   techno), at half in *plain* (no drums; the bass moves by the half bar), at double in
+   *doom* (unsure), and not at all in *ambient* and *neon noir* (unsure; there is no beat
+   to hear, by intent). Its sections do not find A A B A in pieces this short.
+3. *Does it help the hum reader?* The hum reader fits the tempo within a fifth of the one
+   set (a wider search cannot tell a beat from half a beat). A synthetic voice at 60, 68,
+   80, 92, 104, 116, 132 and 150 bpm with 100 set: right at 80 to 116 (19 of 19 notes),
+   wrong outside (1 to 3 of 19). Started from the tempo Playhead hears - within 1 % at
+   every one of the eight - it is right at all of them (19, 19, 19, 19, 19, 19, 19, 18).
+   So: yes, measurably; one would no longer have to set a tempo before humming. Playhead
+   is JavaScript and could run in the page beside the Python. Not built yet, and the
+   voice was synthetic and steady.
+
+**An orchestra and a studio.** Strings are not one saw wave: a section is several players
+never quite in tune (`detune`: two more oscillators a few cents off, beating slowly),
+whose sound opens after the bow has bitten (`filter` moving up over the note), in a hall
+(`room`). The same filter moving *down*, with resonance, on a bass in sixteenths is acid.
+All three went into CLIo's synthesizer (patch 0022). The filter is a state-variable
+low-pass, per note, its cutoff set every 32 samples; a note is rendered once and kept, so
+the cost is small. The room is two passes of two echoes - eight arrive, none on a beat.
+Filtered voices are far quieter than their volume says (a horn through a 1.5 kHz filter
+has lost most of a saw wave's energy), so volumes were again set by measuring each voice
+alone.
+
+**Not listened to**: every new sound. **Not built**: slides and accents in the acid line
+(they need notes with a level of their own in a voice), Playhead in the page, a tempo
+control for converted pieces, extending a piece by arrangement (an intro with fewer
+voices, a breakdown, a lift).
+
 ## 2026-11-17 - genres: guitars, pads and air
 
 **The verdict by ear on 0.12.0**: all the samples "very good"; the Ode versions have "this
