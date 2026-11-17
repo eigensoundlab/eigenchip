@@ -58,7 +58,8 @@ class Session:
         self.samples = None         # the audio that was opened or rendered, mono at 22050 Hz
         self.played = None          # the Score that was played, when the audio came from one
         self.kind = None            # "midi" or "audio"
-        self.tune = False           # the source is a tune of the user's own (text, piano roll, keyboard)
+        self.tune = False           # the source is a tune of the user's own (text, piano roll, keyboard, humming)
+        self.written = None         # ... and that tune as it was written; ``score`` is it played through its form
         self.song = None
         self.grid = None
         self.likeness = None        # the chip sound compared with the sound that was opened, once both exist
@@ -82,15 +83,31 @@ class Session:
         self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
 
-    def open_tune(self, text="", tempo=100.0, meter=(4, 4), title="A tune", notes=None):
+    def open_tune(self, text="", tempo=100.0, meter=(4, 4), title="A tune", notes=None, sections=None):
         """Open a tune written as text, or given as ``notes`` - ``(start, length, pitch)`` in beats, as a piano roll
-        or a keyboard hands them over (``eigenchip/readers/tune.py``): the composer's way in."""
-        from .readers.tune import read_notes, read_tune
-        score = read_notes(notes, tempo, meter, title) if notes is not None else read_tune(text, tempo, meter, title)
-        self.tune = True
-        self.score, self.truth, self.kind = score, {"melody": 0}, "midi"
+        or a keyboard hands them over (``eigenchip/readers/tune.py``): the composer's way in.  A new part of the
+        tune begins at ``||`` in the text, or at the bars (counted from 0) in ``sections``."""
+        from .readers.tune import play_form, read_notes, read_tune
+        written = (read_notes(notes, tempo, meter, title, sections) if notes is not None
+                   else read_tune(text, tempo, meter, title))
+        self.tune, self.written = True, written
+        self.score, self.truth, self.kind = play_form(written), {"melody": 0}, "midi"
         self.reference = self.samples = self.song = self.grid = self.played = self.likeness = None
         return self.facts()
+
+    def open_hum(self, samples, rate=22050, tempo=100.0, meter=(4, 4), title="A hummed tune", progress=None):
+        """Open a tune that was hummed, sung or whistled: mono float samples (``eigenchip/audio/hum.py``).
+        The facts say which tempo the humming was found to have, near the one given."""
+        from .audio import hum, need_numpy
+        np = need_numpy()
+        samples = np.ascontiguousarray(np.asarray(samples, dtype=np.float32).ravel())
+        if not len(samples):
+            raise ValueError("Nothing was recorded.")
+        found, tempo = hum.notes(samples, int(rate), float(tempo), progress)
+        facts = self.open_tune(tempo=round(tempo), meter=meter, title=title, notes=found)
+        facts["hummed"] = len(found)
+        facts["written"] = [list(n) for n in found]
+        return facts
 
     def open_audio(self, samples, rate=22050, title="", transcriber=None, tempo=None, offset=None,
                    meter=(4, 4), steps_per_beat=4, drums=True, voices=5, progress=None,
@@ -184,18 +201,26 @@ class Session:
     # arranging
     # ------------------------------------------------------------------ #
     def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4, expression="full",
-                style="plain", chords=None):
+                style="plain", chords=None, form=None, ending=False, key=None):
         """Arrange the opened piece. Returns everything the page draws and offers for download.
 
         ``expression`` is ``full`` (levels and slides; the song needs CLIo 2.1)
         or ``plain`` (one level, sweeps in steps; plays on CLIo 2.0).  ``style``
-        and ``chords`` (text such as ``"C | G | Am F"``; ``-`` leaves a bar to the
-        arranger) are for ``expand``, which writes parts instead of reducing them.
+        (a style or a mood), ``chords`` (text such as ``"C | G | Am F"``; ``-``
+        leaves a bar to the arranger), ``ending`` (a closing bar, and the song is
+        played once) and ``key`` (``"Am"``, when the key found is not the one
+        meant) are for ``expand``, which writes parts instead of reducing them.
+        ``form`` (``"A A B A"``) is for a tune of the user's own: the order in
+        which its parts are played.
         """
         from .arrangers import expand
-        written = {"style": style, "chords_given": expand.parse_chords(chords) if chords else None}
+        written = {"style": style, "chords_given": expand.parse_chords(chords) if chords else None,
+                   "ending": bool(ending), "key": expand.parse_key(key)}
         if self.score is None:
             raise ValueError("Open a file first.")
+        if self.tune:
+            from .readers.tune import play_form
+            self.score = play_form(self.written, form)
         grid = quantize(self.score, int(steps_per_beat))
         # judge against the notes that were really played when they are known and the tempo was found
         judge, against = grid, "heard" if self.kind == "audio" else "file"
@@ -255,8 +280,11 @@ class Session:
             "song_json": clio.dumps(song), "song_name": _slug(self.score.title),
             "instruments": list(song["instruments"]),
             "chords_text": arr.notes.get("chords_text"), "style": arr.notes.get("style"),
+            "key": arr.notes.get("key"), "ending": bool(arr.notes.get("ending")),
             "tune_text": self._tune_text(),
             "styles": [[name, how["about"]] for name, how in expand.STYLES.items()],
+            "moods": [[name, how["about"], how["tempo"]] for name, how in expand.MOODS.items()],
+            **self._form(grid),
         }
 
     # ------------------------------------------------------------------ #
@@ -266,7 +294,25 @@ class Session:
         if not getattr(self, "tune", False):
             return None
         from .readers.tune import write_tune
-        return write_tune(self.score)
+        return write_tune(self.written)
+
+    def _form(self, grid):
+        """For a tune of the user's own: the tune as written and how its parts are played, for the page.
+
+        ``written``: its notes ``[start, length, pitch]`` in beats; ``sections``: the bars (from 0) at which a part
+        begins; ``form``: ``"A A B A"``; ``parts``: ``[name, start, start as written, length]`` in steps, one for
+        each part played."""
+        if not getattr(self, "tune", False):
+            return {"written": None, "sections": None, "form": None, "parts": None}
+        from .readers.tune import bar_beats, parts_of
+        spb, bar = grid.steps_per_beat, bar_beats(self.written.meter)
+        return {
+            "written": [[n.start, n.dur, n.pitch] for n in self.written.notes],
+            "sections": [int(round(start / bar)) for _name, start, _beats in parts_of(self.written)],
+            "form": self.score.info.get("form"),
+            "parts": [[name, int(round(at * spb)), int(round(start * spb)), int(round(beats * spb))]
+                      for name, at, start, beats in self.score.info.get("parts") or []],
+        }
 
     def chip_wav(self, synth, mute=()):
         """The arranged song played by CLIo's synthesizer (``engine.audio.synth``), as WAV bytes.

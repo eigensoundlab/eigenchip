@@ -9,6 +9,10 @@ beats after a colon (``c4:2``, ``g4:.5``, ``a4:1.5``); ``.`` or ``r`` is a rest,
 ``-`` holds the note before, ``|`` is a bar line and means nothing.  Lengths
 count **beats** here, not steps as in a song: a tune is thought in beats.
 ``[c4 e4]`` sounds together; ``c4@6`` is played softer (levels 0 to 9).
+
+A double bar line ``||`` begins a new **part**.  Parts are called A, B, C... in
+the order they are written, each begins on a bar line, and a *form* such as
+``A A B A`` says in which order they are played (``play_form``).
 """
 from __future__ import annotations
 
@@ -24,8 +28,15 @@ SHORTEST = 0.25             # beats: a sixteenth
 def read_tune(text, tempo=100.0, meter=(4, 4), title="A tune"):
     """The Score of a tune written as text.  Raises ``ValueError`` naming the token it cannot read."""
     notes, at, last = [], 0.0, None
+    bar = bar_beats(meter)
+    parts = [0.0]
     for token in _TOKEN.findall(text or ""):
         if token == "|":
+            continue
+        if token == "||":                                   # a new part, from the next bar line on
+            at, last = -(-at // bar) * bar if at % bar > 1e-9 else at, None
+            if at > parts[-1]:
+                parts.append(at)
             continue
         body, _colon, length = token.partition(":") if not token.startswith("[") else (
             token[:token.index("]") + 1], ":", token[token.index("]") + 1:].lstrip(":").partition(":")[0])
@@ -63,11 +74,16 @@ def read_tune(text, tempo=100.0, meter=(4, 4), title="A tune"):
         at += beats
     if not notes:
         raise ValueError("There are no notes in the tune yet.")
-    return Score(notes, float(tempo), tuple(meter), title, {0: "tune"})
+    return Score(notes, float(tempo), tuple(meter), title, {0: "tune"}, {"sections": parts})
 
 
-def read_notes(notes, tempo=100.0, meter=(4, 4), title="A tune"):
-    """The Score of a tune given as ``(start, length, pitch)`` in beats: what a piano roll or a keyboard hands over."""
+def bar_beats(meter):
+    return meter[0] * 4.0 / meter[1]
+
+
+def read_notes(notes, tempo=100.0, meter=(4, 4), title="A tune", sections=None):
+    """The Score of a tune given as ``(start, length, pitch)`` in beats: what a piano roll or a keyboard hands over.
+    ``sections`` are the bars (counted from 0) at which a new part begins."""
     out = []
     for start, length, pitch in notes or []:
         start, length, pitch = float(start), float(length), int(pitch)
@@ -77,7 +93,58 @@ def read_notes(notes, tempo=100.0, meter=(4, 4), title="A tune"):
     if not out:
         raise ValueError("There are no notes in the tune yet.")
     out.sort(key=lambda n: (n.start, n.pitch))
-    return Score(out, float(tempo), tuple(meter), title, {0: "tune"})
+    starts = sorted({0.0} | {int(b) * bar_beats(meter) for b in sections or [] if int(b) > 0})
+    return Score(out, float(tempo), tuple(meter), title, {0: "tune"}, {"sections": starts})
+
+
+def parts_of(score):
+    """The parts of a tune as ``[(name, start, beats)]``: A, B, C... from one double bar line to the next."""
+    bar = bar_beats(score.meter)
+    end = max(bar, -(-max(n.end for n in score.notes) // bar) * bar)
+    starts = sorted({0.0} | {float(s) for s in score.info.get("sections") or [] if 0 < s < end})
+    if len(starts) > 26:
+        raise ValueError("A tune has at most 26 parts, A to Z.")
+    return [(chr(65 + i), a, b - a) for i, (a, b) in enumerate(zip(starts, starts[1:] + [end]))]
+
+
+def parse_form(text, names):
+    """'A A B A' or 'aaba' -> ['A', 'A', 'B', 'A']; nothing -> every part once, in order."""
+    form = re.findall(r"[A-Za-z]", (text or "").upper())
+    if re.sub(r"[A-Za-z\s,|-]", "", text or ""):
+        raise ValueError("The form is written with the letters of the parts, for example: A A B A.")
+    for name in form:
+        if name not in names:
+            have = names[0] if len(names) == 1 else "%s to %s" % (names[0], names[-1])
+            raise ValueError("The form names a part %s, and the tune has only %s. A new part begins at a double bar "
+                             "line, ||, in the text - or where you double-click a bar number on the roll." % (name, have))
+    if len(form) > 64:
+        raise ValueError("A form has at most 64 parts.")
+    return form or list(names)
+
+
+def play_form(score, form=None):
+    """The tune as it is played: its parts in the order of the form.
+
+    Returns a new Score.  Its ``info`` holds ``parts`` - ``[name, start in the song, start as written, beats]`` for
+    each part played, all in beats - and ``phrase_starts``, where each of them begins.
+    """
+    parts = parts_of(score)
+    by_name = {name: (start, beats) for name, start, beats in parts}
+    order = parse_form(form, [name for name, _s, _b in parts])
+    notes, played, at = [], [], 0.0
+    for name in order:
+        start, beats = by_name[name]
+        for n in score.notes:
+            if start <= n.start < start + beats:
+                notes.append(Note(at + n.start - start, min(n.dur, start + beats - n.start), n.pitch, n.vel,
+                                  n.channel, n.program, n.drum))
+        played.append([name, at, start, beats])
+        at += beats
+    if not notes:
+        raise ValueError("The parts in the form have no notes in them.")
+    info = dict(score.info, parts=played, phrase_starts=[p[1] for p in played], form=" ".join(order),
+                sections=[start for _n, start, _b in parts])
+    return Score(notes, score.tempo, score.meter, score.title, dict(score.names), info)
 
 
 def _beats(length):
@@ -95,17 +162,22 @@ def write_tune(score):
         if not n.drum:
             groups.setdefault(round(n.start * 4) / 4.0, []).append(n)
     starts = sorted(groups)
-    bar = score.meter[0] * 4.0 / score.meter[1]
+    bar = bar_beats(score.meter)
+    breaks = sorted(float(s) for s in score.info.get("sections") or [] if s > 0)
     tokens, at = [], 0.0
 
     def put(text, length):
         nonlocal at
         tokens.append(text + _beats(length))
         at += length
-        if abs(at / bar - round(at / bar)) < 1e-6:
+        if any(abs(at - b) < 1e-6 for b in breaks):
+            tokens.append("||")
+        elif abs(at / bar - round(at / bar)) < 1e-6:
             tokens.append("|")
 
     for i, start in enumerate(starts):
+        for b in [b for b in breaks if at + 1e-6 < b <= start + 1e-6]:      # rest up to where the next part begins
+            put(".", b - at)
         if start - at >= 0.25:
             put(".", start - at)
         until = starts[i + 1] if i + 1 < len(starts) else None

@@ -153,25 +153,42 @@ everything else exists to feed them and to judge them.
 ## Writing instead of reducing
 
 `expand` goes the other way from the other arrangers: it keeps one line and writes the
-rest. On the page, *Write a tune* takes a melody as text, *Edit the tune on the roll*
-lets you click, drag and play it in (the computer's keys, or a MIDI keyboard where the
-browser allows one) - also the lead of a piece you converted - and the arrangement can be
-shaped by a style (plain, ballad, march, drive, waltz) and by the chords, which are shown
-bar by bar and can be replaced. In Python:
+rest. On the page there are three ways to give it a tune of your own: *Write a tune*
+takes a melody as text, *Edit the tune on the roll* lets you click, drag and play it in
+(the computer's keys, or a MIDI keyboard where the browser allows one) - also the lead of
+a piece you converted - and *Hum it instead* records the microphone and writes down what
+you hummed, sang or whistled, for you to mend on the roll.
+
+The arrangement is then shaped by
+
+- a **style** (plain, ballad, march, drive, waltz, walk - a walking bass) or a **mood**
+  (calm, mystery, dark, tense, battle, heroic, shop, space, victory, defeat: the moods of
+  CLIo's own composer, each with its tempo, drums and sound for the tune);
+- a **form**: `||` in the text, or a double click on a bar number of the roll, begins a
+  new part (A, B, C…), and `A A B A` says in which order they are played;
+- an **ending**: a closing bar on the tonic, and the song is played once;
+- the **chords**, which are shown bar by bar and can be replaced, and the **key**, which
+  can be chosen when the one found is not the one meant.
+
+In Python:
 
 ```python
-from eigenchip.readers.tune import read_tune
+from eigenchip.readers.tune import play_form, read_tune
 from eigenchip.ir import quantize
 from eigenchip.arrangers import arrange, expand
 from eigenchip.writers import clio
 
-grid = quantize(read_tune("e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2", tempo=120))
-arr = arrange(grid, "expand", 4, style="march", chords_given=expand.parse_chords("C | G7 | Am F | -"))
+tune = read_tune("e4 e4 f4 g4 | g4 f4 e4 d4 || c4 c4 d4 e4 | e4:1.5 d4:.5 c4:2", tempo=120)
+grid = quantize(play_form(tune, "A A B A"))
+arr = arrange(grid, "expand", 4, style="heroic", ending=True,
+              chords_given=expand.parse_chords("C | G7 | - | -"), key=expand.parse_key("C"))
 song = clio.to_song(arr, grid)          # a CLIo song, as from any other arranger
 ```
 
-It knows one key and the chords you give it; what it chooses itself are the seven triads
-of that key. It is a base to build a composer's tool on, not yet one.
+The harmony is chosen half bar by half bar from the chords of one key, major or minor
+(its seven triads; in minor the major dominant too), so that it fits the tune, moves at
+the bar lines and comes to rest at the ends of phrases. It does not modulate, and it does
+not know secondary dominants or borrowed chords; write those into the chord line.
 
 ## What has been found so far
 

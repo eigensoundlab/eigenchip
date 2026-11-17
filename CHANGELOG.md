@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.12.0 - 2026-11-17
+
+Form, harmony that moves, moods, and a tune hummed in.
+
+- **Form.** A double bar line `||` in the tune's text begins a new part - A, then B, C… -
+  and on the roll a double click on a bar number does the same. The *Form* field says in
+  which order the parts are played (`A A B A`); a part not named is left out. The tune is
+  kept as it was written: while it is edited, the roll shows it once, with its parts
+  marked and what the chip plays folded back onto it.
+- **An ending.** *End with a closing bar* writes one more bar on the tonic and the song is
+  played once (`"loop": false`) instead of going round.
+- **Smarter harmony** in `expand`:
+  - **minor keys** - the relative minor is taken when the music rests there, and its
+    major dominant (E in A minor) when the raised seventh is heard;
+  - **cadences** - a phrase likes to end on the dominant or the tonic, the piece on the
+    tonic with the dominant before it; phrases are the parts of the tune, else four bars;
+  - harmony **moves** at bar lines and follows the usual successions, so a tune no
+    longer sits on one chord for bars; the note that begins a half bar says most about
+    its chord, a short note between the beats least, and the dominant may carry its
+    seventh (an f under G is not a wrong note);
+  - a tune that leaves out a step of its scale fits two keys: the choice is now made by
+    how listeners weigh the steps of a key (Krumhansl and Kessler's profiles), where the
+    music ends, and against a key whose own triad is never heard;
+  - the **key can be chosen** when the one found is not the one meant.
+- **A walking bass** (style *walk*): a step on every beat, up through the chord and by a
+  step of the scale into each new one.
+- **Moods**: calm, mystery, dark, tense, battle, heroic, shop, space, victory, defeat -
+  the names, tempi, drum patterns and lead sounds of CLIo's own composer, so a mood means
+  the same in both. Choosing one for a tune of your own also sets its tempo.
+- **Hum it.** *Hum it instead* records the microphone and writes down what was hummed,
+  sung or whistled (`eigenchip/audio/hum.py`): the voice's own tuning is measured and
+  allowed for (also when it sinks as the tune goes on), slides into notes and blips are
+  taken out, the tempo is fitted near the one set, a breath is not written as a rest,
+  and a low voice is moved up into the tune's octave. The notes land on the roll, to be
+  mended there.
+- `readers.tune.parts_of`, `play_form`; `expand.key_of`, `parse_key`, `MOODS`, `way`;
+  `Session.open_hum`, `Session.arrange(form=, ending=, key=)`.
+
+On the corpus, a tune alone and expanded is now closer to the piece it was taken from in
+harmony (0.72 to 0.74) and its bass hits the true bass more often (0.50 to 0.56); a whole
+piece through `expand` is unchanged (0.85). The measure hardly moves with the settings:
+whether the richer harmony *sounds* better is for the ear. The hum reader has only been
+tried on a synthetic voice, not on a real one.
+
 ## 0.11.0 - 2026-11-16
 
 The tune on the piano roll.

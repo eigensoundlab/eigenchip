@@ -51,7 +51,7 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(view["arranger"], "expand")
         self.assertEqual((view["style"], view["chords_text"].split(" | ")[:2]), ("march", ["C", "G7"]))
         self.assertEqual(view["instruments"], ["lead", "bass", "inner", "chords", "kit"])
-        self.assertEqual([name for name, _about in view["styles"]], ["plain", "ballad", "march", "drive", "waltz"])
+        self.assertEqual([name for name, _about in view["styles"]], ["plain", "ballad", "march", "drive", "waltz", "walk"])
         self.assertIsNone(session.arrange("roles-arp", 3)["chords_text"])      # a reducing arranger has none to show
         with self.assertRaisesRegex(ValueError, "not a chord"):
             session.arrange("expand", 4, chords="C | H")
@@ -78,6 +78,39 @@ class ComposerTests(unittest.TestCase):
         self.assertTrue(0 < alone < whole)
         self.assertEqual(loudness(session.chip_wav(synth, mute=view["instruments"])), 0.0)
         self.assertEqual(session.song["instruments"]["bass"]["volume"], 0.5)   # muting leaves the song as it is
+
+
+    def test_form_ending_key_and_moods(self):
+        session = Session()
+        tune = "e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2 || d4 d4 e4 c4 | d4 e4:.5 f4:.5 e4 c4 | " \
+               "d4 e4:.5 f4:.5 e4 d4 | c4 d4 g3:2"
+        session.open_tune(tune, tempo=110)
+        plain = session.arrange("expand", 4)
+        self.assertEqual((plain["form"], plain["sections"], plain["steps"]), ("A B", [0, 4], 128))
+        self.assertEqual((plain["key"], plain["ending"], json.loads(plain["song_json"])["loop"]), ("C major", False, True))
+        view = session.arrange("expand", 4, style="heroic", form="a a b a", ending=True)
+        self.assertEqual(view["form"], "A A B A")
+        self.assertEqual(view["parts"], [["A", 0, 0, 64], ["A", 64, 0, 64], ["B", 128, 64, 64], ["A", 192, 0, 64]])
+        self.assertEqual(view["steps"], 4 * 64 + 16)                              # and the closing bar
+        self.assertFalse(json.loads(view["song_json"])["loop"])
+        self.assertEqual(view["tune_text"], tune)                                 # the tune stays as it was written,
+        self.assertEqual(len(view["written"]), 32)                                # however often its parts are played
+        self.assertEqual(len(view["source"]), 15 * 3 + 17)
+        self.assertEqual((view["style"], view["voices"][0]["wave"]), ("heroic", "square"))
+        self.assertEqual([m[0] for m in view["moods"]][:3], ["calm", "mystery", "dark"])
+        self.assertEqual(session.arrange("expand", 4, key="Am")["key"], "A minor")
+        with self.assertRaisesRegex(ValueError, "names a part C"):
+            session.arrange("expand", 4, form="A C")
+        with self.assertRaisesRegex(ValueError, "not a key"):
+            session.arrange("expand", 4, key="X")
+        # parts from a piano roll, by bar; and a file has neither parts nor a form
+        session.open_tune(notes=[[0, 1, 60], [4, 2, 64], [8, 4, 67]], sections=[1, 2])
+        rolled = session.arrange("expand", 4, form="C A")
+        self.assertEqual((rolled["sections"], rolled["tune_text"]), ([0, 1, 2], "c4 .:3 || e4:2 .:2 || g4:4"))
+        self.assertEqual(rolled["parts"], [["C", 0, 32, 16], ["A", 16, 0, 16]])
+        session.open_midi(corpus_bytes("ode_to_joy"))
+        filed = session.arrange("expand", 4, form="A A", ending=True)
+        self.assertEqual((filed["form"], filed["parts"], filed["written"], filed["ending"]), (None, None, None, True))
 
 
 class SessionTests(unittest.TestCase):

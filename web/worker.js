@@ -47,11 +47,17 @@ def _call(name, payload, blob):
                                                   progress=_progress, **a.get("options", {})))
     if name == "open_tune":
         return to_json(session.open_tune(a.get("text", ""), a.get("tempo", 100), tuple(a.get("meter", [4, 4])),
-                                         a.get("title", "A tune"), a.get("notes")))
+                                         a.get("title", "A tune"), a.get("notes"), a.get("sections")))
+    if name == "open_hum":
+        import numpy as np
+        samples = np.frombuffer(_bytes(blob), dtype=np.float32)
+        return to_json(session.open_hum(samples, a.get("rate", 22050), a.get("tempo", 100),
+                                        tuple(a.get("meter", [4, 4])), a.get("title", "A hummed tune"), _progress))
     if name == "arrange":
         return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4),
                                        expression=a.get("expression", "full"), style=a.get("style", "plain"),
-                                       chords=a.get("chords")))
+                                       chords=a.get("chords"), form=a.get("form"), ending=a.get("ending", False),
+                                       key=a.get("key")))
     if name == "likeness":
         return to_json(session.likeness)
     if name == "chip":

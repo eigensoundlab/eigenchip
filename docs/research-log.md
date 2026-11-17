@@ -3,6 +3,50 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-17 - form, harmony that moves, moods, a hummed tune
+
+**Harmony.** `expand` chose too few chords (Ode's first bars: C, C, C, C G): a change
+cost the same everywhere and nothing asked for one. Now a change is cheap at a bar line
+and staying costs a little there, successions have a direction (S to D to T), phrases
+end in cadences, the first note of a half bar weighs more and passing notes less, and
+the dominant forgives its seventh. Ode alone now gets `C F | G C | F G | C G`.
+
+*What the corpus says*: a tune alone, expanded, against the piece it came from: harmony
+0.72 to 0.74, bass recall 0.50 to 0.56 (average over the pieces that have a bass); whole
+pieces through `expand` 0.85, unchanged. A sweep over five of the new constants (162
+settings) had its twelve best between 0.742 and 0.746: with ten pieces, half of them
+written here with one chord to the bar, the measure cannot choose between sensible
+settings. They are set by
+reasoning, not fitted. The one piece that got *worse* in the number is Ode (0.78 to
+0.73): its corpus version has the plainest harmony, C and G by the bar, and the new one
+is richer. Which is better is a question for the ear.
+
+**Keys.** The relative minor is now found (crossing: A minor, long tune: D minor, groove:
+E minor, also from the tune alone). The trap was a tune that leaves out a step: Ode has
+no b and no b flat, so C major and F major hold it equally, and with its first part
+ending on d it was taken for D minor. Three things together put it right: Krumhansl and
+Kessler's key profiles instead of my own triad weights, less weight on the last note
+(a part often ends on a half cadence), and a penalty for a key whose own tonic, third or
+fifth never sounds (D minor without an a). A wrong key still spoils everything after it,
+so the page lets the key be chosen.
+
+**Humming.** The single-line transcriber follows a hummed line well when the voice sits
+on the tempered pitches and badly when it does not: 30 cents flat, and every note flickers
+between two semitones. So the voice's own tuning is measured first (autocorrelation pitch
+per frame, the wave of a vibrato averaged out, the distance to the nearest note averaged
+around the circle over three seconds) and the recording is bent to sit on the notes; this
+follows a voice that sinks as it sings. A circular mean over raw frames fails on a wide
+vibrato (the turning points of the wave are where the pitch spends its time, and beyond a
+quarter tone they wrap to the other side) - hence the averaging over one wave first.
+On a synthetic voice (partials under a formant, slides into the notes, vibrato, breaths,
+jitter, noise) the tune comes back note for note when it is an octave low, 12 % slow or
+fast, 30 cents flat, sinking by a semitone, wavering by 60 cents either way, whistled.
+**Not tried: a real voice.** A real hum has less steady pitch within a note, consonants,
+and rhythm that drifts; expect wrong notes, which is why it lands on the roll for mending.
+
+**Not built**: count-in or a click while humming; undo on the roll; modulation,
+secondary dominants; drums written for meters other than four-four.
+
 ## 2026-11-14 - the composer's base
 
 **The verdict by ear on 0.9.0.** The orchestral piece: in the reduction, in the version

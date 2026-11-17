@@ -14,7 +14,8 @@ const KEYS_W = 38;
 const RELEASE = ((document.currentScript && document.currentScript.src.split("v=")[1]) || "").split("&")[0];
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-const edit = { on: false, notes: [], length: 4, cursor: 0, sel: -1, drag: null, timer: 0, octave: 4, midi: null, audio: null };
+const edit = { on: false, notes: [], sections: [], length: 4, cursor: 0, sel: -1, drag: null, timer: 0, octave: 4, midi: null, audio: null };
+const hum = { rec: null, chunks: [], stream: null, timer: 0 };
 const state = {
   engine: null,          // {numpy, version} once Python is up
   source: null,          // {id, name, file?, example?, bytes?, midi}
@@ -23,6 +24,9 @@ const state = {
   view: null,
   busy: false,
   chords: null,          // chords the user asked for (text), for the expanding arranger
+  form: null,            // the order of the parts of a tune ("A A B A"), when the user gave one
+  key: "",               // the key the user chose ("Am"), empty for the one that is found
+  after: null,           // what to say when the next conversion is done, instead of how long it took
   mute: new Set(),       // instruments of the chip version that are switched off
   hits: [],              // rectangles of drawn notes, for the tooltip
   geometry: null,
@@ -179,7 +183,8 @@ async function open() {
   const s = state.source;
   if (s.tune) {
     status("Reading the tune…");
-    return ask("open_tune", { text: s.tune.text || "", notes: s.tune.notes || null, tempo: s.tune.tempo, meter: s.tune.meter, title: s.name });
+    return ask("open_tune", { text: s.tune.text || "", notes: s.tune.notes || null, sections: s.tune.sections || null,
+      tempo: s.tune.tempo, meter: s.tune.meter, title: s.name });
   }
   const title = s.name.replace(/\.[^.]+$/, "");
   const truth = s.example ? s.example.truth : null;
@@ -216,17 +221,20 @@ async function convert(arrangeOnly) {
     if (!arrangeOnly || key !== state.opened) {
       state.opened = null;
       state.chords = null;                                  // another piece: its chords are chosen afresh
+      if (!state.source.tune) { state.form = null; state.key = ""; }      // a tune being worked on keeps its form and key
       state.facts = await open();
       state.opened = key;
     }
     progress(null);
     status("Arranging…");
     state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value),
-      expression: $("expression").value, style: $("style").value || "plain", chords: state.chords });
+      expression: $("expression").value, style: $("style").value || "plain", chords: state.chords,
+      form: state.source.tune ? state.form : null, ending: $("ending").checked, key: state.key || null });
     show();
     status("Making the chip sound…");
     await sound();
-    status(`Done in ${((performance.now() - started) / 1000).toFixed(1)} s. Play it, or choose another arranger in the table.`);
+    status(state.after || `Done in ${((performance.now() - started) / 1000).toFixed(1)} s. Play it, or choose another arranger in the table.`);
+    state.after = null;
   } catch (err) {
     if (!state.stopped) status(err.message, true);
   } finally {
@@ -275,16 +283,49 @@ function useTune() {
   convert(false);
 }
 
-function written() {                                       // what only the expanding arranger has: a style, and chords to change
-  const v = state.view, on = !!v && v.arranger === "expand";
+const KEYS = NAMES.map((n) => [n, n + " major"]).concat(NAMES.map((n) => [n + "m", n + " minor"]));
+function written() {                                       // what only the expanding arranger has: a style or a mood, a form,
+  const v = state.view, on = !!v && v.arranger === "expand";       // a key, an ending, and chords to change
   $("written").hidden = !on;
+  $("shape").hidden = !on;
   $("chordline").hidden = !on;
   if (!on) return;
   const style = $("style");
-  if (!style.options.length) for (const [name] of v.styles) style.append(new Option(name, name));
+  if (!style.options.length) {
+    for (const [label, list] of [["Ways of moving", v.styles], ["Moods", v.moods]]) {
+      const group = document.createElement("optgroup");
+      group.label = label;
+      for (const [name] of list) group.append(new Option(name, name));
+      style.append(group);
+    }
+    $("key").append(new Option("as found", ""));
+    for (const [value, name] of KEYS) $("key").append(new Option(name, value));
+  }
   style.value = v.style || "plain";
-  $("style-about").textContent = (v.styles.find(([name]) => name === style.value) || [])[1] || "";
+  const mood = v.moods.find(([name]) => name === style.value);
+  $("style-about").textContent = mood ? `${mood[1]} A mood: it has its own drums and sound for the tune, and a tempo of ${mood[2]}.`
+    : (v.styles.find(([name]) => name === style.value) || [])[1] || "";
   $("chords").value = v.chords_text || "";
+  $("key").options[0].text = "as found: " + (state.key ? "…" : v.key || "…");
+  $("key").value = state.key;
+  const own = !!v.parts;
+  $("form-box").hidden = !own;
+  if (own && document.activeElement !== $("form")) $("form").value = v.form || "";
+  const names = own ? [...new Set(v.sections.map((_, i) => String.fromCharCode(65 + i)))] : [];
+  $("shape-hint").textContent = (own ? (names.length > 1
+    ? `The tune has the parts ${names.join(", ")}. The form is the order they are played in; a part not named is left out. `
+    : "The tune is one part, A. Begin another with || in the text, or with a double click on a bar number while editing the roll; " +
+      "then write here the order they are played in, for example A A B A. ") : "") +
+    (v.ending ? "With its closing bar the song is played once." : "Without a closing bar the song goes round and round.");
+}
+
+function styleChanged() {                                   // a mood brings its tempo; a tune of one's own takes it
+  const v = state.view, mood = v && v.moods.find(([name]) => name === $("style").value);
+  if (mood && state.source && state.source.tune) {
+    $("tune-tempo").value = String(mood[2]);
+    return edit.on ? commit(true) : useTune();
+  }
+  convert(true);
 }
 
 // ---------------------------------------------------------------------- which voices sound
@@ -386,6 +427,7 @@ function show() {
   if (v.tune_text != null && document.activeElement !== $("tune")) $("tune").value = v.tune_text;
   if (edit.on && state.source && state.source.tune && state.source.tune.text) {     // written as text meanwhile: the roll follows
     edit.notes = fromView();
+    edit.sections = (v.sections || []).filter((bar) => bar > 0);
     edit.sel = -1;
     edit.cursor = Math.max(0, ...edit.notes.map((n) => n[0] + n[1]));
     $("roll").scrollLeft = 0;
@@ -502,7 +544,8 @@ function draw() {
   const v = state.view;
   if (!v) return;
   let lo = v.pitch_range[0] - 2, hi = v.pitch_range[1] + 2;
-  const steps = edit.on ? Math.max(v.steps, editSteps()) : v.steps;
+  const folded = folding();                                 // editing a tune with a form: the roll shows it as written
+  const steps = folded ? Math.max(editSteps(), ...folded.map(([, , ws, len]) => ws + len)) : edit.on ? Math.max(v.steps, editSteps()) : v.steps;
   if (edit.on) {                                            // room to write: three octaves at least, and what is there
     lo = Math.min(lo, 48, ...edit.notes.map((n) => n[2] - 2));
     hi = Math.max(hi, 84, ...edit.notes.map((n) => n[2] + 2));
@@ -548,6 +591,14 @@ function draw() {
     const n = s / v.steps_per_bar;
     if (bar && n % everyBar === 0 && s < steps) { c.fillStyle = css("--screen-dim"); c.fillText(String(n + 1), s * px + 4, 15); }
   }
+  // the parts of a tune: as written while it is edited, as played otherwise
+  const marks = edit.on ? (edit.sections.length ? [0, ...edit.sections].map((bar, i) => [String.fromCharCode(65 + i), bar * v.steps_per_bar]) : [])
+    : (v.parts && v.sections.length > 1 ? v.parts.map(([name, at]) => [name, at]) : []);
+  for (const [name, at] of marks) {
+    c.fillStyle = css("--lead");
+    c.fillRect(Math.round(at * px), 0, 2, H);
+    c.fillText(name, at * px + 6 + c.measureText(String(at / v.steps_per_bar + 1)).width + 4, 15);
+  }
 
   state.hits = [];
   const note = (start, dur, pitch, colour, label, outline) => {
@@ -568,14 +619,20 @@ function draw() {
     const layer = voice.role === "lead" || voice.role === "bass" ? voice.role : "third";
     if (!layerOn(layer) || (edit.on && voice.role === "lead")) continue;     // the tune is drawn from the editor, below
     const label = voice.role === "chords" ? "Chords" : voice.role === "inner" ? "Inner voice" : voice.role[0].toUpperCase() + voice.role.slice(1);
-    for (const [s, d, p] of voice.notes) note(s, d, p, colours[voice.role] || css("--third"), label);
+    for (const [s, d, p] of voice.notes) {
+      const at = folded ? unfold(s, true) : s;
+      if (at !== null) note(at, d, p, colours[voice.role] || css("--third"), label);
+    }
   }
   if (v.played && layerOn("played")) for (const [s, d, p] of v.played) note(s, d, p, css("--screen-ink"), "Really played", true);
   if (hasDrums && layerOn("drums")) {
     c.fillStyle = css("--source");
     for (const s of v.source_drums) c.fillRect(s * px, g.drumY, Math.max(1.5, Math.min(3, px - 1)), 7);
     c.fillStyle = css("--screen-ink");
-    for (const [s] of v.drums) c.fillRect(s * px, g.drumY + 9, Math.max(1.5, Math.min(3, px - 1)), 7);
+    for (const [s] of v.drums) {
+      const at = folded ? unfold(s, true) : s;
+      if (at !== null) c.fillRect(at * px, g.drumY + 9, Math.max(1.5, Math.min(3, px - 1)), 7);
+    }
   }
   if ((v.effects || []).length && layerOn("effects")) drawEffects(c, v, g, px);
   if (edit.on) {
@@ -589,6 +646,25 @@ function draw() {
   }
   $("notes").setAttribute("aria-label", `Piano roll of ${v.title}: ${v.source.length} source notes and ${v.voices.length} chip voices.`);
   playhead();
+}
+
+// A tune with a form is longer played than written.  While it is edited the roll shows it as written, and what
+// the chip plays is folded back onto that: each part once, where it was written, and the closing bar after the end.
+function folding() {
+  const v = state.view;
+  return edit.on && v && v.parts && v.parts.length ? v.parts : null;
+}
+
+function unfold(step, once) {                               // a step of the song -> where it is on the written roll
+  const parts = folding();
+  if (!parts) return step;
+  const seen = new Set();
+  for (const [name, at, ws, len] of parts) {
+    if (step >= at && step < at + len) return once && seen.has(name) ? null : ws + step - at;
+    seen.add(name);
+  }
+  const last = parts[parts.length - 1];
+  return Math.max(...parts.map(([, , ws, len]) => ws + len)) + step - (last[1] + last[3]);
 }
 
 function where(start, dur) {
@@ -676,7 +752,7 @@ function clock() { $("clock").textContent = `${mmss(musicTime())} / ${mmss(total
 function playhead() {
   const g = state.geometry, v = state.view, el = $("playhead");
   if (!g || !v) return;
-  const x = KEYS_W + Math.max(0, Math.min(v.steps, musicTime() / v.step_seconds)) * g.px;
+  const x = KEYS_W + (unfold(Math.max(0, Math.min(v.steps, musicTime() / v.step_seconds)), false) || 0) * g.px;
   el.hidden = false;
   el.style.left = x + "px";
   el.style.height = g.H + "px";
@@ -752,7 +828,12 @@ $("write").addEventListener("click", () => {
   if (!panel.hidden) $("tune").focus();
 });
 $("tune-use").addEventListener("click", useTune);
-$("style").addEventListener("change", () => convert(true));
+$("style").addEventListener("change", styleChanged);
+$("form").addEventListener("change", () => { state.form = $("form").value.trim() || null; convert(true); });
+$("form").addEventListener("keydown", (e) => { if (e.key === "Enter") $("form").blur(); });
+$("key").addEventListener("change", () => { state.key = $("key").value; state.chords = null; convert(true); });
+$("ending").addEventListener("change", () => convert(true));
+$("hum").addEventListener("click", toggleHum);
 $("chords-use").addEventListener("click", () => { state.chords = $("chords").value.trim() || null; convert(true); });
 $("chords-auto").addEventListener("click", () => { state.chords = null; convert(true); });
 $("chords").addEventListener("keydown", (e) => { if (e.key === "Enter") $("chords-use").click(); });
@@ -835,7 +916,8 @@ async function applyTune() {
   if (!edit.notes.length) return status("The roll is empty. Click on it to add a note, or play one.");
   const { tempo, meter } = tuneMeta();
   const notes = edit.notes.map(([s, d, p]) => [s / 4, d / 4, p]);
-  state.source = { id: "tune:" + JSON.stringify([notes, tempo, meter]), name: "A tune", tune: { notes, tempo, meter }, midi: true };
+  const sections = [...edit.sections];
+  state.source = { id: "tune:" + JSON.stringify([notes, sections, tempo, meter]), name: "A tune", tune: { notes, sections, tempo, meter }, midi: true };
   $("example").value = "";
   $("arranger").value = "expand";
   if (Number($("voices").value) < 4) $("voices").value = "4";
@@ -847,12 +929,13 @@ async function applyTune() {
 function fromView() {                                       // the tune as the engine has it, in quarter beats
   const v = state.view;
   if (!v) return [];
-  const k = 4 / v.steps_per_beat;
-  const lead = state.source && state.source.tune ? v.source : ((v.voices.find((x) => x.role === "lead") || v.voices[0] || {}).notes || []);
+  const own = state.source && state.source.tune && v.written;          // as it was written, not as its form plays it
+  const k = own ? 4 : 4 / v.steps_per_beat;
+  const lead = own ? v.written : ((v.voices.find((x) => x.role === "lead") || v.voices[0] || {}).notes || []);
   return lead.map(([s, d, p]) => [Math.round(s * k), Math.max(1, Math.round(d * k)), p]).sort((a, b) => a[0] - b[0] || a[2] - b[2]);
 }
 
-function setEditing(on) {
+function setEditing(on, heard) {                            // ``heard``: notes to begin with, from a hummed tune
   if (on && state.busy) return status("Still working on the last piece. Try again in a moment.");
   edit.on = on;
   $("edit").setAttribute("aria-pressed", String(on));
@@ -861,20 +944,77 @@ function setEditing(on) {
   $("roll").classList.toggle("editing", on);
   if (!on) { clearTimeout(edit.timer); return draw(); }
   const own = !!(state.source && state.source.tune);
-  if (state.view && !own) {                                 // a converted piece: its lead becomes a tune to work on
+  if (state.view && !own && !heard) {                       // a converted piece: its lead becomes a tune to work on
     $("tune-tempo").value = String(Math.round(state.view.tempo));
     const meter = state.view.meter.join("/");
     if ([...$("tune-meter").options].some((o) => o.value === meter)) $("tune-meter").value = meter;
   }
-  edit.notes = fromView();
+  edit.notes = heard || fromView();
+  edit.sections = heard || !own || !state.view ? [] : (state.view.sections || []).filter((bar) => bar > 0);
   edit.sel = -1;
   edit.cursor = Math.max(0, ...edit.notes.map((n) => n[0] + n[1]));
   $("sketch").hidden = false;
   $("write").setAttribute("aria-expanded", "true");
   if (!state.view) { state.view = blankView(); $("empty").hidden = true; }
   listenToMidi();
-  if (!own && edit.notes.length) commit(true); else draw();
+  if ((heard || !own) && edit.notes.length) commit(true); else draw();
   $("roll").focus();
+}
+
+// ---------------------------------------------------------------------- humming a tune in
+async function toggleHum() {
+  if (hum.rec) return hum.rec.stop();
+  if (state.busy) return status("Still working on the last piece. Try again in a moment.");
+  if (!state.engine) return status("The engine is still starting. Try again in a moment.");
+  if (!state.engine.numpy) return status("Listening to a voice needs NumPy, which did not load here.", true);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+    return status("This browser gives a page no microphone. Write the tune as text, or on the roll.", true);
+  }
+  try {                                                     // the voice as it is: nothing taken out, nothing levelled
+    hum.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (err) {
+    return status("The microphone was not allowed, or there is none. Write the tune as text, or on the roll.", true);
+  }
+  stop();
+  hum.chunks = [];
+  hum.rec = new MediaRecorder(hum.stream);
+  hum.rec.ondataavailable = (e) => { if (e.data.size) hum.chunks.push(e.data); };
+  hum.rec.onstop = heardHum;
+  hum.rec.start();
+  hum.timer = setTimeout(() => hum.rec && hum.rec.stop(), 60000);
+  $("hum").textContent = "Stop and write it down";
+  $("hum").setAttribute("aria-pressed", "true");
+  status(`Listening. Hum, sing or whistle the tune, one note after another, at about ${tuneMeta().tempo} beats a minute. Then stop.`);
+}
+
+async function heardHum() {
+  clearTimeout(hum.timer);
+  const blob = new Blob(hum.chunks, { type: hum.rec.mimeType });
+  hum.stream.getTracks().forEach((track) => track.stop());
+  hum.rec = hum.stream = null;
+  $("hum").textContent = "Hum it instead";
+  $("hum").setAttribute("aria-pressed", "false");
+  if (state.busy) return status("Still working on the last piece. Hum it again in a moment.");
+  state.busy = true;
+  progress(null);
+  let facts = null;
+  try {
+    status("Writing down what was hummed…");
+    const got = await decode(await blob.arrayBuffer(), 60);
+    const { tempo, meter } = tuneMeta();
+    facts = await ask("open_hum", { rate: RATE, tempo, meter }, got.samples);
+  } catch (err) {
+    status(err.message, true);
+  } finally {
+    state.busy = false;
+    progress(undefined);
+  }
+  if (!facts) return;
+  state.opened = null;
+  state.form = null;
+  $("tune-tempo").value = String(Math.round(facts.tempo));
+  state.after = `Heard ${facts.hummed} notes at about ${Math.round(facts.tempo)} beats a minute. They are on the roll: mend what was misheard, then play it.`;
+  setEditing(true, facts.written.map(([s, d, p]) => [Math.round(s * 4), Math.max(1, Math.round(d * 4)), p]));
 }
 
 function cell(event) {
@@ -962,7 +1102,7 @@ async function listenToMidi() {
 
 $("edit").addEventListener("click", () => setEditing(!edit.on));
 $("edit-length").addEventListener("change", (e) => { edit.length = Number(e.target.value); $("roll").focus(); });
-$("edit-clear").addEventListener("click", () => { edit.notes = []; edit.sel = -1; edit.cursor = 0; draw(); status("The roll is empty. Click on it to add a note, or play one."); });
+$("edit-clear").addEventListener("click", () => { edit.notes = []; edit.sections = []; edit.sel = -1; edit.cursor = 0; draw(); status("The roll is empty. Click on it to add a note, or play one."); });
 $("tune-tempo").addEventListener("change", () => { if (edit.on) commit(true); });
 $("tune-meter").addEventListener("change", () => { if (edit.on) commit(true); });
 $("notes").addEventListener("pointerdown", (e) => {
@@ -1008,6 +1148,13 @@ $("notes").addEventListener("pointercancel", dropNote);
 $("notes").addEventListener("dblclick", (e) => {
   if (!edit.on) return;
   const at = cell(e), i = noteAt(at.step, at.pitch);
+  if (at.ruler) {                                           // on a bar number: a new part of the tune begins here, or no longer does
+    const bar = Math.floor(at.step / state.view.steps_per_bar);
+    if (bar < 1) return status("The first part, A, begins with the tune. Double-click a later bar to begin part B there.");
+    edit.sections = edit.sections.includes(bar) ? edit.sections.filter((b) => b !== bar) : [...edit.sections, bar].sort((a, b) => a - b);
+    if (edit.sections.length > 25) edit.sections.length = 25;
+    return edit.notes.length ? commit(true) : draw();
+  }
   if (i < 0) return;
   edit.notes.splice(i, 1);
   const same = noteAt(at.step, at.pitch);                   // the first click of the two may have added one on top

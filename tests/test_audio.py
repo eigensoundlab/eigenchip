@@ -565,6 +565,95 @@ class TuneTests(unittest.TestCase):
         self.assertGreaterEqual(text.count("c2"), 2)                         # struck again where the music swells
 
 
+def hummed(text, tempo, rate=22050, octave=-12, cents=0.0, vibrato=0.3, scoop=1.5, noise=0.01, drift=0.0, seed=1):
+    """A made-up voice humming a tune: partials under a formant, a slide up into every note, a wavering pitch, a
+    breath of silence before the next note, never quite on the beat, tuned ``cents`` off and drifting."""
+    from eigenchip.readers.tune import read_tune
+    rnd = np.random.default_rng(seed)
+    score = read_tune(text, tempo)
+    beat = 60.0 / tempo
+    total = int((score.length * beat + 0.9) * rate)
+    out = np.zeros(total)
+    for n in score.notes:
+        at = int((0.4 + n.start * beat + rnd.normal(0, 0.012)) * rate)
+        dur = n.dur * beat * (0.82 if n.dur <= 1 else 0.9)
+        t = np.arange(int(dur * rate)) / rate
+        pitch = n.pitch + octave + cents / 100.0 + drift * n.start / max(1.0, score.length)
+        f = 440.0 * 2 ** ((pitch - scoop * np.exp(-t / 0.035)
+                           + vibrato * np.sin(2 * np.pi * 5.5 * t) * np.minimum(1.0, t / 0.25) - 69) / 12.0)
+        phase = 2 * np.pi * np.cumsum(f) / rate
+        tone = sum((1.0 / h) * (1.0 + 2.0 * np.exp(-((f.mean() * h - 500.0) / 250.0) ** 2)) * np.sin(h * phase)
+                   for h in range(1, 14))
+        tone = tone * np.minimum(1.0, t / 0.04) * np.minimum(1.0, (dur - t) / 0.06)
+        out[at:at + len(tone)] += 0.2 * tone[:total - at]
+    out += noise * rnd.normal(size=total)
+    return (out / np.abs(out).max() * 0.6).astype(np.float32), rate
+
+
+@needs_numpy
+class HumTests(unittest.TestCase):
+    """A tune hummed into a microphone becomes notes for the composer."""
+
+    ODE = "e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2"
+
+    def heard(self, text, sung, given, **how):
+        from eigenchip.audio import hum
+        from eigenchip.readers.tune import read_tune
+        samples, rate = hummed(text, sung, **how)
+        notes, tempo = hum.notes(samples, rate, given)
+        want = [(n.start, n.pitch) for n in read_tune(text).notes]
+        return [(s, p) for s, _d, p in notes], want, tempo, notes
+
+    def test_a_low_voice_is_written_down_in_the_tunes_octave(self):
+        got, want, tempo, notes = self.heard(self.ODE, 100, 100)                  # hummed an octave below
+        self.assertEqual(got, want)
+        self.assertEqual(tempo, 100.0)
+        self.assertEqual([d for _s, d, _p in notes[:8]], [1.0] * 8)               # a breath is not a rest
+        self.assertEqual(notes[12][1:], (1.5, 64))
+
+    def test_the_tempo_is_fitted_near_the_one_set(self):
+        for sung in (88, 112):
+            got, want, tempo, _notes = self.heard(self.ODE, sung, 100)
+            self.assertEqual(got, want, sung)
+            self.assertAlmostEqual(tempo, sung, delta=1.0)
+
+    def test_a_voice_out_of_tune_wavering_and_sinking(self):
+        from eigenchip.audio import hum
+        for how in ({"cents": -30}, {"vibrato": 0.6}, {"drift": -0.5}, {"cents": 40, "drift": -1.0}):
+            got, want, _tempo, _notes = self.heard(self.ODE, 100, 100, **how)
+            self.assertEqual(got, want, how)
+        samples, rate = hummed(self.ODE, 100, cents=-30)
+        _times, off = hum.tuning(samples, rate)
+        self.assertAlmostEqual(float(off.mean()), -0.3, delta=0.05)               # the voice's own tuning is measured
+        bent, clock = hum.in_tune(samples, rate)
+        self.assertLess(len(bent), len(samples))                                  # played a little faster: higher
+        self.assertAlmostEqual(clock(len(bent) / float(rate)), len(samples) / float(rate), delta=0.01)
+
+    def test_quick_notes_rests_and_a_whistle(self):
+        quick = "g4:.5 a4:.5 b4 d5:.5 b4:.5 a4 | g4:2 e4 d4 | g4:.5 a4:.5 b4 d5:.5 b4:.5 a4 | g4:3 .:1"
+        for how in ({}, {"octave": 12, "vibrato": 0.1, "scoop": 0.5}):
+            got, want, _tempo, _notes = self.heard(quick, 104, 100, **how)
+            self.assertEqual(got, want, how)
+        _got, _want, _tempo, notes = self.heard("c4 c4 g4 g4 | a4 a4 g4 . | f4 f4 e4 e4 | d4 d4 c4:2", 100, 100)
+        self.assertEqual(notes[6][:2], (6.0, 1.0))                                # a real rest stays a rest
+        self.assertEqual(notes[7][0], 8.0)
+
+    def test_nothing_hummed_and_the_session(self):
+        from eigenchip.app import Session
+        from eigenchip.audio import hum
+        with self.assertRaisesRegex(ValueError, "No tune was heard"):
+            hum.notes(np.zeros(22050, dtype=np.float32), 22050, 100)
+        samples, rate = hummed("c4 c4 g4 g4 | a4 a4 g4:2 | f4 f4 e4 e4 | d4 d4 c4:2", 96)
+        session = Session()
+        facts = session.open_hum(samples, rate, tempo=100)
+        self.assertEqual((facts["hummed"], facts["tempo"]), (14, 96.0))
+        self.assertEqual(facts["written"][:3], [[0.0, 1.0, 60], [1.0, 1.0, 60], [2.0, 1.0, 67]])
+        view = session.arrange("expand", 4, style="calm")
+        self.assertEqual((view["key"], view["tune_text"][:26]), ("C major", "c4 c4 g4 g4 | a4 a4 g4:2 |"))
+        with self.assertRaisesRegex(ValueError, "Nothing was recorded"):
+            session.open_hum(np.zeros(0, dtype=np.float32), rate)
+
+
 class ReaderTests(unittest.TestCase):
     def wav(self, name, **kw):
         score = piece(name)

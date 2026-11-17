@@ -15,6 +15,7 @@
   "eigenchip/audio/decode.py",
   "eigenchip/audio/effects.py",
   "eigenchip/audio/evaluate.py",
+  "eigenchip/audio/hum.py",
   "eigenchip/audio/melody.py",
   "eigenchip/audio/synth.py",
   "eigenchip/audio/transcribe.py",

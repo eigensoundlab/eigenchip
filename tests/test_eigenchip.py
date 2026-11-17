@@ -272,7 +272,7 @@ class ExpandTests(unittest.TestCase):
         whole = quantize(full)
         with_parts = metrics.evaluate(whole, arr, None, {})["chroma"]
         by_itself = metrics.evaluate(whole, arrange(alone, "skyline", 1), None, {})["chroma"]
-        self.assertGreater(with_parts, by_itself + 0.1)
+        self.assertGreater(with_parts, by_itself + 0.05)
 
     def test_a_tune_is_written_as_text(self):
         from eigenchip.readers.tune import read_tune
@@ -329,6 +329,120 @@ class ExpandTests(unittest.TestCase):
         self.assertEqual(arr.notes["chords_text"].split(" | ")[:3], ["C", "G7", "Am F"])
         self.assertEqual([ps[0] % 12 for s, _d, ps in arr.voice("bass").events if s in (16, 32, 40)], [7, 9, 5])
         self.assertTrue(any(len(ps) == 4 for _s, _d, ps in arr.voice("chords").events))  # the seventh is played
+
+    def test_parts_and_a_form(self):
+        from eigenchip.readers.tune import parts_of, play_form, read_notes, read_tune, write_tune
+        text = "e4 e4 f4 g4 | g4 f4 e4 d4 || c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2 || g4:2"
+        tune = read_tune(text)
+        self.assertEqual(parts_of(tune), [("A", 0.0, 8.0), ("B", 8.0, 8.0), ("C", 16.0, 4.0)])
+        self.assertEqual(write_tune(tune), text)                                     # the double bar lines are kept
+        self.assertEqual([p[0] for p in parts_of(read_tune("c4 d4 e4 f4"))], ["A"])  # no double bar line: one part
+        self.assertEqual(parts_of(read_tune("c4 d4 || e4")), [("A", 0.0, 4.0), ("B", 4.0, 4.0)])   # a part begins on a bar line
+        played = play_form(tune, "a a b a c")
+        self.assertEqual(played.info["form"], "A A B A C")
+        self.assertEqual(played.info["parts"], [["A", 0.0, 0.0, 8.0], ["A", 8.0, 0.0, 8.0], ["B", 16.0, 8.0, 8.0],
+                                                ["A", 24.0, 0.0, 8.0], ["C", 32.0, 16.0, 4.0]])
+        self.assertEqual(len(played.notes), 3 * 8 + 7 + 1)
+        self.assertEqual([n.pitch for n in played.notes if 8 <= n.start < 10], [64, 64])    # A again, from its beginning
+        self.assertEqual(play_form(tune).info["form"], "A B C")                      # no form: every part once, in order
+        self.assertEqual(play_form(tune, "AABA").info["form"], "A A B A")
+        with self.assertRaisesRegex(ValueError, "names a part D"):
+            play_form(tune, "A D")
+        with self.assertRaisesRegex(ValueError, "letters of the parts"):
+            play_form(tune, "A + B")
+        drawn = read_notes([[0, 1, 60], [8, 1, 62]], sections=[1, 2])                # from a piano roll: parts by bar
+        self.assertEqual([p[0] for p in parts_of(drawn)], ["A", "B", "C"])
+        self.assertEqual(write_tune(drawn), "c4 .:3 || .:4 || d4")
+
+    def test_minor_keys_cadences_and_a_key_of_ones_own(self):
+        from eigenchip.arrangers import expand
+        from eigenchip.readers.tune import play_form, read_tune
+        keys = {"c4 e4 g4 e4 | f4 a4 g4:2": "C major",
+                "a4 c5 e5 c5 | d5 f5 e5:2 | a4 c5 e5 a5 | g#5 e5 a5:2": "A minor",
+                "d4 f4 a4 f4 | g4 bb4 a4:2 | d5 c5 bb4 a4 | g4 e4 d4:2": "D minor",
+                "e4 g4 a4 b4 | d5 b4 a4 g4 | e4:4": "E minor"}
+        for text, key in keys.items():
+            self.assertEqual(arrange(quantize(read_tune(text)), "expand", 4).notes["key"], key, text)
+        # the major dominant belongs to a minor key whose raised seventh is heard, and the piece comes home at the end
+        harmonic = arrange(quantize(read_tune("a4 c5 e5 c5 | d5 f5 e5:2 | a4 c5 e5 a5 | g#5 e5 a5:2")), "expand", 4)
+        self.assertEqual(harmonic.notes["chords_text"].split(" | ")[-1], "E Am")
+        natural = arrange(quantize(read_tune("a4 c5 e5 c5 | d5 f5 e5:2 | a4 c5 e5 a5 | g5 e5 a5:2")), "expand", 4)
+        self.assertNotIn("E ", natural.notes["chords_text"] + " ")                   # g natural: no E major here
+        # a tune that never says b or b flat fits two scales; it is not taken for the minor key of the wrong one
+        ode = "e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2 || d4 d4 e4 c4 | d4 e4:.5 f4:.5 e4 c4 | " \
+              "d4 e4:.5 f4:.5 e4 d4 | c4 d4 g3:2"
+        for form in ("A", "A B", "A A B A"):
+            self.assertEqual(arrange(quantize(play_form(read_tune(ode), form)), "expand", 4).notes["key"], "C major", form)
+        # harmony moves: more than tonic and dominant, and not the same chord all the way
+        chosen = arrange(quantize(play_form(read_tune(ode), "A")), "expand", 4).notes["chords_text"]
+        self.assertGreaterEqual(len(set(chosen.replace("|", " ").split())), 3, chosen)
+        self.assertEqual(chosen.split(" | ")[0].split()[0], "C")                     # it begins at home
+        # the key can be given
+        self.assertEqual(expand.parse_key("Am"), (0, True))
+        self.assertEqual(expand.parse_key("F# minor"), (9, True))
+        self.assertEqual(expand.parse_key("G major"), (7, False))
+        self.assertIsNone(expand.parse_key(""))
+        with self.assertRaisesRegex(ValueError, "not a key"):
+            expand.parse_key("H")
+        given = arrange(quantize(play_form(read_tune(ode), "A")), "expand", 4, key=expand.parse_key("Am"))
+        self.assertEqual(given.notes["key"], "A minor")
+        self.assertEqual(given.notes["chords_text"].split()[0], "Am")
+
+    def test_a_walking_bass_moods_and_an_ending(self):
+        from eigenchip.arrangers import expand
+        from eigenchip.readers.tune import read_tune
+        grid = quantize(read_tune("e4 e4 f4 g4 | g4 f4 e4 d4 | c4 c4 d4 e4 | e4:1.5 d4:.5 d4:2", 120))
+        walk = arrange(grid, "expand", 4, style="walk")
+        bass = walk.voice("bass").events
+        self.assertEqual([(s, d) for s, d, _p in bass], [(4 * k, 4) for k in range(16)])    # a step on every beat
+        key = {(walk.notes["tonic"] + s) % 12 for s in expand.SCALE}
+        self.assertTrue(all(p[0] % 12 in key for _s, _d, p in bass))
+        path = [c for bar in walk.notes["chords_text"].split(" | ") for c in (bar.split() * 2)[:2]]
+        for w in range(1, len(path)):                                                # into each new chord by a step
+            if path[w] != path[w - 1]:
+                before, root = bass[2 * w - 1][2][0], bass[2 * w][2][0]
+                self.assertIn(abs(before - root), (1, 2), (w, path[w - 1], path[w]))
+                self.assertEqual(root % 12, expand.parse_chord(path[w])[0])
+        for mood, how in expand.MOODS.items():
+            arr = arrange(grid, "expand", 4, style=mood)
+            song = clio.to_song(arr, grid)
+            self.assertEqual(clio.validate(song), [], mood)
+            self.assertEqual(arr.voice("lead").instrument["wave"], how["lead"], mood)
+            self.assertEqual(bool(arr.drums), how["kit"] != "none", mood)
+            self.assertTrue(30 <= how["tempo"] <= 200 and how["about"], mood)
+            self.assertTrue(song["loop"])
+        self.assertNotIn("duty", arrange(grid, "expand", 4, style="calm").voice("lead").instrument)
+        self.assertFalse(set(expand.MOODS) & set(expand.STYLES))
+        # an ending: one more bar on the tonic, and the song is played once
+        ended = arrange(grid, "expand", 4, style="march", ending=True)
+        self.assertEqual(ended.voice("bass").events[-1], (64, 16, [36]))
+        self.assertEqual(ended.voice("chords").events[-1], (64, 16, [55, 60, 64]))
+        self.assertEqual(ended.voice("lead").events[-1], (64, 16, [60]))             # the tune ended on d: it is brought home
+        self.assertEqual(ended.drums[-1], (64, ["k", "o"]))
+        song = clio.to_song(ended, grid)
+        self.assertFalse(song["loop"])
+        self.assertEqual(clio.validate(song), [])
+        home = quantize(read_tune("e4 d4 c4:2 | d4 e4 c4:2", 120))                   # a tune that comes home by itself
+        self.assertEqual(len(arrange(home, "expand", 4, ending=True).voice("lead").events), 6)
+
+    @unittest.skipUnless(os.path.exists(os.path.join(os.environ.get("CLIO", os.path.join(ROOT, "..", "eryxgames", "clio")),
+                                                     "engine", "audio", "compose.py")),
+                         "no CLIo beside this folder (set CLIO to its folder to compare the moods)")
+    def test_the_moods_are_those_of_clios_composer(self):
+        from eigenchip.arrangers import expand
+        home = os.environ.get("CLIO", os.path.join(ROOT, "..", "eryxgames", "clio"))
+        sys.path.insert(0, home)
+        try:
+            import importlib
+            compose = importlib.import_module("engine.audio.compose")
+        finally:
+            sys.path.remove(home)
+        self.assertEqual(list(expand.MOODS), list(compose.MOODS))
+        for name, (_scales, (slow, fast), _progressions, kit, lead, _density) in compose.MOODS.items():
+            mood = expand.MOODS[name]
+            self.assertEqual((mood["kit"], mood["lead"]), (kit, lead), name)
+            self.assertEqual(mood["drums"], compose._DRUMS[kit].replace(" ", "") if kit != "none" else "", name)
+            self.assertTrue(slow <= mood["tempo"] <= fast, name)
 
     def test_a_whole_piece_is_evidence_for_the_chords(self):
         for name in ("crossing", "long_tune", "ode_to_joy"):

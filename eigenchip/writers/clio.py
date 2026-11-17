@@ -424,7 +424,7 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
         "tempo": int(round(grid.tempo)),
         "steps_per_beat": grid.steps_per_beat,
         "volume": 0.5,
-        "loop": True,
+        "loop": not arrangement.notes.get("ending"),         # a piece with an ending is played once
         "instruments": instruments,
         "patterns": patterns,
         "sequence": sequence,

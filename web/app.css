@@ -155,6 +155,9 @@ footer p { max-width: 46rem; }
 .written input[type="text"] { text-align: left; flex: 1 1 18rem; min-width: 10rem; font: 0.95rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 0.3rem 0.5rem; border: 1px solid var(--rule);
   border-radius: 6px; background: #fff; color: var(--ink); }
 .written .hint { flex-basis: 100%; }
+.written #form { flex: 0 1 9rem; min-width: 6rem; text-transform: uppercase; }
+.written label { display: inline-flex; gap: 0.4rem; align-items: baseline; }
+.sketch #hum[aria-pressed="true"] { background: var(--ink); color: #fff; }
 /* which voices sound */
 .hear { display: inline-flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; align-items: center; }
 .hear .voice { display: inline-flex; align-items: center; gap: 0.35rem; }
