@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.15.0 - 2026-11-17
+
+The rest of the orchestra, a short tune made long, the plain chip, and a tempo that is heard.
+
+- **A hummed tune at its own tempo.** [Playhead](https://github.com/eigensoundlab/playhead)'s
+  analysis (one file of it, `web/vendor/playhead`, fetched when you first hum) hears the
+  tempo of what was hummed, so none has to be set before. It is on unless switched off;
+  where it is not sure of a pulse, the tempo set is taken as before.
+- **More of the orchestra**, four genres: **epic orchestral** (a trumpet over strings and
+  horns, low strings driving, kettledrums, a snare), **pastoral** (a flute over a harp,
+  plucked basses, strings behind, a clarinet below the tune), **chamber** (plucked strings
+  off the beat, a clarinet, a bell on top) and **cathedral** (a choir, an organ, a bell
+  that tolls). Kettledrums are notes now, on the root of the chord - also in *dark
+  orchestral*. The genres are listed by family: band, orchestra, electronic, space.
+- **Five more sounds for the tune**: clarinet, oboe, horn, trumpet, bells.
+- **A short tune made long by arrangement.** In the form, a part in brackets - `(A)` - is
+  played without the tune, `A-` quietly (no bass, no drums), `A+` a tone higher. *Make it
+  longer* writes such a form by itself: the first part without its tune to begin, the
+  form, a quiet part, the first part again and once more a tone higher, a closing bar -
+  `A A B A` becomes `(A) A A B A B- A A+` (`eigenchip/arrangers/plan.py`).
+- **On the plain chip.** A tick plays any genre on the plain chip instruments - the same
+  notes, no overdrive, detune, filter or room - so that the song sounds the same on every
+  CLIo.
+- A song says it needs CLIo 2.1 only when it really has slides or levels.
+
+In a browser with a made-up microphone, a tune hummed at 138 with 90 set came out right
+with Playhead's tempo and as nonsense at 76 without. None of the new sounds has been
+listened to by anyone; the voice was synthetic.
+
 ## 0.14.0 - 2026-11-17
 
 An orchestra, a studio, five more genres - and the tune's sound, quantising, dark mode.

@@ -58,7 +58,7 @@ def _call(name, payload, blob):
         return to_json(session.arrange(a.get("arranger", "roles-arp"), a.get("voices", 3), a.get("steps_per_beat", 4),
                                        expression=a.get("expression", "full"), style=a.get("style", "plain"),
                                        chords=a.get("chords"), form=a.get("form"), ending=a.get("ending", False),
-                                       key=a.get("key"), lead=a.get("lead") or None))
+                                       key=a.get("key"), lead=a.get("lead") or None, chip=a.get("chip", False)))
     if name == "song":
         return session.song_json(a.get("mute") or ())
     if name == "likeness":

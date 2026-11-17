@@ -59,7 +59,7 @@ import re
 
 from ..ir import Arrangement
 from . import roles
-from .common import line, map_drums, voice
+from .common import LEADS, line, map_drums, voice
 
 NAME = "expand"
 SUMMARY = "Keep the tune; write bass, chords and an inner line anew from the harmony."
@@ -317,7 +317,7 @@ _SOLO = {"wave": "saw", "duty": None, "attack": 0.01, "decay": 0.1, "sustain": 0
 _PAD = {"arp": None, "gate": 1.0, "decay": 0.3, "sustain": 0.85}
 GENRES = {
     "rock": {
-        "about": "Power chords in eighths, a backbeat, a lead with some bite.", "tempo": 126,
+        "group": "band", "about": "Power chords in eighths, a backbeat, a lead with some bite.", "tempo": 126,
         "chords": "power", "low": 40, "riff": "x-x-x-x-x-x-x-x-", "bass": "eighths", "arp": 1,
         "drums": "k.h.s.h.k.k.s.h.", "crash": True,
         "sound": {"chords": dict(_GUITAR, drive=0.55, lowpass=0.45, gate=0.85, volume=0.14),
@@ -326,7 +326,7 @@ GENRES = {
                   "bass": {"volume": 0.4}},
         "kit_sound": {"volume": 0.7}},
     "metal": {
-        "about": "A galloping riff, hard overdrive, two kicks to the beat.", "tempo": 150,
+        "group": "band", "about": "A galloping riff, hard overdrive, two kicks to the beat.", "tempo": 150,
         "chords": "power", "low": 40, "riff": "x-xxx-xxx-xxx-xx", "bass": "chug", "arp": 1,
         "drums": "khkkshkkkhkkshkk", "crash": True,
         "sound": {"chords": dict(_GUITAR, drive=0.9, lowpass=0.4, gate=0.75, sustain=0.6, volume=0.13),
@@ -335,7 +335,7 @@ GENRES = {
                   "bass": {"wave": "saw", "drive": 0.4, "lowpass": 0.6, "gate": 0.8, "volume": 0.17}},
         "kit_sound": {"volume": 0.5}},
     "doom": {
-        "about": "Slow and very heavy: low chords left to ring, a drum now and then.", "tempo": 60,
+        "group": "band", "about": "Slow and very heavy: low chords left to ring, a drum now and then.", "tempo": 60,
         "chords": "power", "low": 36, "riff": "x---------------x-------x-----x-", "bass": "chug", "arp": 1,
         "drums": "k...h...s...h.k.", "crash": True,
         "sound": {"chords": dict(_GUITAR, drive=1.0, lowpass=0.55, gate=1.0, sustain=0.9, release=0.25, volume=0.09),
@@ -345,7 +345,7 @@ GENRES = {
                   "bass": {"wave": "saw", "drive": 0.5, "lowpass": 0.7, "gate": 1.0, "sustain": 0.9, "volume": 0.14}},
         "kit_sound": {"volume": 0.8}},
     "industrial": {
-        "about": "A machine: clipped chords in sixteenths, a hammering kit, steam.", "tempo": 104,
+        "group": "band", "about": "A machine: clipped chords in sixteenths, a hammering kit, steam.", "tempo": 104,
         "chords": "power", "low": 38, "riff": "xx.x.xx.xx.x.xx.", "bass": "eighths", "arp": 1,
         "drums": "k.hhc.hhk.khc.hh", "steam": True,
         "sound": {"chords": dict(_GUITAR, wave="square", duty=0.125, drive=1.0, lowpass=0.3, gate=0.6, sustain=0.5,
@@ -355,7 +355,7 @@ GENRES = {
                   "bass": {"wave": "saw", "drive": 0.6, "lowpass": 0.65, "gate": 0.7, "volume": 0.22}},
         "kit_sound": {"drive": 0.6, "volume": 0.37}},
     "ambient": {
-        "about": "Soft chords held wide, a bass that takes its time, air, no drums.", "tempo": 66,
+        "group": "space", "about": "Soft chords held wide, a bass that takes its time, air, no drums.", "tempo": 66,
         "chords": "pad", "bass": "long", "arp": 1, "drums": "", "air": (1, 4),
         "sound": {"chords": dict(_PAD, wave="soft", attack=0.5, release=1.2, lowpass=0.5, echo=[0.4, 0.3], volume=0.13),
                   "lead": {"wave": "soft", "duty": None, "attack": 0.06, "sustain": 0.7, "release": 0.6,
@@ -364,7 +364,7 @@ GENRES = {
                   "bass": {"wave": "triangle", "attack": 0.25, "sustain": 0.9, "release": 0.8, "gate": 1.0,
                            "volume": 0.3}}},
     "soundscape": {
-        "about": "A drone under everything, slow swells of noise, the tune far away.", "tempo": 60,
+        "group": "space", "about": "A drone under everything, slow swells of noise, the tune far away.", "tempo": 60,
         "chords": "pad", "bass": "pedal", "arp": 1, "drums": "", "air": (2, 5), "air_sound": "wind", "inner": False,
         "sound": {"chords": dict(_PAD, wave="sine", attack=1.0, release=2.0, echo=[0.6, 0.4], volume=0.15),
                   "lead": {"wave": "sine", "duty": None, "attack": 0.12, "sustain": 0.7, "release": 0.9,
@@ -385,7 +385,7 @@ _BRASS = dict(_PAD, wave="saw", detune=10, attack=0.35, release=1.4, filter=[350
               echo=[0.5, 0.3])
 GENRES.update({
     "rock ballad": {
-        "about": "Slow rock: a clean guitar picking the chords, a long bass, a lead that sings.", "tempo": 72,
+        "group": "band", "about": "Slow rock: a clean guitar picking the chords, a long bass, a lead that sings.", "tempo": 72,
         "bass": "long", "arp": 2, "drums": "k.h.s.h.k.h.s.h.", "crash": True,
         "sound": {"chords": dict(_CLEAN, volume=0.42),
                   "lead": dict(_SOLO, drive=0.35, lowpass=0.35, vibrato=[5, 0.005], release=0.3, echo=[0.375, 0.3],
@@ -394,7 +394,7 @@ GENRES.update({
                   "bass": {"gate": 1.0, "sustain": 0.9, "volume": 0.33}},
         "kit_sound": {"room": 0.3, "volume": 0.8}},
     "metal march": {
-        "about": "Heavy and in step: chords on the beat, a marching snare, two guitars in thirds.", "tempo": 108,
+        "group": "band", "about": "Heavy and in step: chords on the beat, a marching snare, two guitars in thirds.", "tempo": 108,
         "chords": "power", "low": 40, "riff": "x---x---x-x-x---", "bass": "chug", "arp": 1,
         "drums": ["k...k...k...k...", "..s...ss..s..sss"], "crash": True,
         "sound": {"chords": dict(_GUITAR, drive=0.9, lowpass=0.45, gate=0.9, sustain=0.8, volume=0.12),
@@ -403,15 +403,16 @@ GENRES.update({
                   "bass": {"wave": "saw", "drive": 0.4, "lowpass": 0.6, "gate": 0.9, "volume": 0.16}},
         "kit_sound": {"volume": 0.55}},
     "dark orchestral": {
-        "about": "Strings held wide, low strings driving in eighths, a horn for the tune, great drums.", "tempo": 76,
-        "chords": "pad", "bass": "eighths", "arp": 1, "drums": ["k.....k.....k...", "........t.t....."], "crash": True,
+        "group": "orchestra", "about": "Strings held wide, low strings driving in eighths, a horn for the tune, great drums.", "tempo": 76,
+        "chords": "pad", "bass": "eighths", "arp": 1, "drums": "k.....k.....k...", "crash": True,
+        "timpani": "........x.x.....",
         "sound": {"chords": dict(_STRINGS, volume=0.34),
                   "lead": dict(_HORN, volume=0.7),
                   "inner": dict(_STRINGS, attack=0.12, release=0.3, room=0.4, volume=0.16),
                   "bass": dict(_SPICCATO, volume=1.0)},
         "kit_sound": {"room": [0.6, 2.0], "volume": 0.5}},
     "acid techno": {
-        "about": "A kick on every beat, hats between, and a bass line that squelches in sixteenths.", "tempo": 132,
+        "group": "electronic", "about": "A kick on every beat, hats between, and a bass line that squelches in sixteenths.", "tempo": 132,
         "chords": "stab", "riff": "..x-..x-..x-..x-", "bass": "acid", "arp": 1, "inner": False,
         "drums": ["k...k...k...k...", "..o...o...o...o.", "....c.......c..."],
         "sound": {"chords": {"wave": "saw", "arp": None, "detune": 8, "attack": 0.004, "decay": 0.1, "sustain": 0.4,
@@ -422,7 +423,7 @@ GENRES.update({
                            "filter": [2600, 260, 0.88, 0.1], "drive": 0.35, "volume": 0.3}},
         "kit_sound": {"volume": 0.6}},
     "neon noir": {
-        "about": "Rain on neon: slow synthesizer brass in seventh chords, a deep bass, a great deal of room.",
+        "group": "electronic", "about": "Rain on neon: slow synthesizer brass in seventh chords, a deep bass, a great deal of room.",
         "tempo": 66, "chords": "pad", "sevenths": True, "bass": "long", "arp": 1,
         "drums": "k...............t.......t.......", "air": (2, 3), "air_sound": "wind",
         "sound": {"chords": dict(_BRASS, volume=0.28),
@@ -434,6 +435,77 @@ GENRES.update({
                            "volume": 0.26}},
         "kit_sound": {"room": [0.7, 2.0], "volume": 0.65}},
 })
+# More of the orchestra.  Plucked strings and a harp are a short bright sound that dulls at once; a clarinet is a
+# square wave (it has the odd partials only) made soft; an oboe a narrow pulse; a trumpet a saw wave that opens
+# fast; a choir a section of voices behind a filter that rings around one vowel; kettledrums are notes, not hits.
+_PIZZ = {"wave": "saw", "arp": None, "detune": 5, "attack": 0.003, "decay": 0.16, "sustain": 0.0, "release": 0.1,
+         "gate": 1.0, "filter": [2600, 500, 0.1, 0.08], "room": 0.4}
+_HARP = {"wave": "triangle", "attack": 0.003, "decay": 0.5, "sustain": 0.1, "release": 0.5, "gate": 1.0,
+         "filter": [3200, 900, 0.1, 0.25], "room": [0.5, 1.5]}
+_FLUTE = {"wave": "sine", "duty": None, "attack": 0.05, "decay": 0.1, "sustain": 0.8, "release": 0.3,
+          "vibrato": [5, 0.005], "room": 0.4}
+_CLARINET = {"wave": "square", "duty": 0.5, "attack": 0.04, "decay": 0.1, "sustain": 0.8, "release": 0.2,
+             "lowpass": 0.45, "vibrato": [5, 0.003], "room": 0.4}
+_OBOE = {"wave": "square", "duty": 0.2, "attack": 0.03, "decay": 0.1, "sustain": 0.8, "release": 0.2,
+         "lowpass": 0.4, "vibrato": [5.5, 0.004], "room": 0.4}
+_TRUMPET = {"wave": "saw", "duty": None, "attack": 0.02, "decay": 0.1, "sustain": 0.8, "release": 0.15,
+            "filter": [700, 3000, 0.2, 0.08], "vibrato": [5.5, 0.004], "room": [0.5, 1.5]}
+_LOW_BRASS = {"wave": "saw", "attack": 0.04, "decay": 0.15, "sustain": 0.85, "release": 0.25, "gate": 1.0,
+              "filter": [250, 1100, 0.15, 0.15], "room": [0.5, 1.5]}
+_CHOIR = dict(_PAD, wave="saw", detune=12, attack=0.4, release=1.2, filter=[700, 1000, 0.5, 0.5], room=[0.7, 2.0])
+_ORGAN = {"wave": "organ", "duty": None, "attack": 0.03, "decay": 0.1, "sustain": 1.0, "release": 0.3, "gate": 1.0,
+          "room": [0.7, 2.0]}
+_BELL = {"wave": "sine", "attack": 0.002, "decay": 0.9, "sustain": 0.0, "release": 0.9, "gate": 1.0, "room": [0.6, 2.0]}
+TIMPANI = {"wave": "triangle", "attack": 0.003, "decay": 0.45, "sustain": 0.0, "release": 0.3, "gate": 1.0,
+           "lowpass": 0.5, "room": [0.6, 2.0], "volume": 0.4}
+# Further fields of a genre.  ``timpani``: a bar of sixteen steps, ``x`` a stroke on the root of the chord.
+# ``strings``: besides the chord voice, a section of strings holds the chord (its sound).  ``bells``: a bell an
+# octave above the tune wherever the tune begins a bar (its sound).  ``toll``: a deep bell on the key note where a
+# phrase begins (its sound).
+GENRES.update({
+    "epic orchestral": {
+        "group": "orchestra", "about": "A trumpet over strings and horns, low strings driving, kettledrums and a snare.",
+        "tempo": 112, "chords": "pad", "bass": "eighths", "arp": 1,
+        "drums": ["k.......k.......", "....s.......s.ss"], "crash": True, "timpani": "x.....x.x.......",
+        "sound": {"chords": dict(_STRINGS, volume=0.34),
+                  "lead": dict(_TRUMPET, volume=0.62),
+                  "inner": dict(_HORN, volume=0.25),
+                  "bass": dict(_SPICCATO, volume=0.9)},
+        "kit_sound": {"room": [0.6, 2.0], "volume": 0.38}},
+    "pastoral": {
+        "group": "orchestra", "about": "A flute over a harp, plucked basses, strings behind, a clarinet below the tune.",
+        "tempo": 84, "bass": "beats", "arp": 2, "drums": "", "strings": dict(_STRINGS, volume=0.2),
+        "sound": {"chords": dict(_HARP, volume=0.3),
+                  "lead": dict(_FLUTE, volume=0.34),
+                  "inner": dict(_CLARINET, volume=0.08),
+                  "bass": dict(_PIZZ, volume=1.0)}},
+    "chamber": {
+        "group": "orchestra", "about": "Light on its feet: plucked strings off the beat, a clarinet, a bell on top.",
+        "tempo": 120, "chords": "stab", "riff": "..x...x...x...x.", "bass": "beats", "arp": 1, "drums": "",
+        "bells": dict(_BELL, decay=0.4, release=0.4, volume=0.2),
+        "sound": {"chords": dict(_PIZZ, volume=1.2),
+                  "lead": dict(_CLARINET, volume=0.26),
+                  "inner": dict(_FLUTE, volume=0.14),
+                  "bass": dict(_PIZZ, volume=1.0)}},
+    "cathedral": {
+        "group": "orchestra", "about": "A choir holding the chords, an organ below and for the tune, a bell that tolls.",
+        "tempo": 60, "chords": "pad", "bass": "long", "arp": 1, "drums": "", "toll": dict(_BELL, decay=2.5, release=2.0, volume=0.3),
+        "sound": {"chords": dict(_CHOIR, volume=0.4),
+                  "lead": dict(_ORGAN, vibrato=None, volume=0.33),
+                  "inner": dict(_ORGAN, volume=0.08),
+                  "bass": dict(_ORGAN, volume=0.25)}},
+})
+GROUPS = {"band": "Band", "orchestra": "Orchestra", "electronic": "Electronic", "space": "Space"}
+LEADS.update({                                              # the orchestra's solo voices, for any tune
+    "clarinet": {"about": "Hollow and warm.", "sound": dict(_CLARINET, volume=0.26)},
+    "oboe": {"about": "Thin and reedy, a little plaintive.", "sound": dict(_OBOE, volume=0.24)},
+    "horn": {"about": "Round brass, a little slow to speak.", "sound": {k: v for k, v in dict(_HORN, volume=0.7).items() if v is not None}},
+    "trumpet": {"about": "Bright brass.", "sound": {k: v for k, v in dict(_TRUMPET, volume=0.62).items() if v is not None}},
+    "bells": {"about": "Struck, and left to ring.", "sound": dict(_BELL, decay=0.6, release=0.6, volume=0.4)},
+})
+# What of a genre's sounds stays when the plain chip is asked for: how a voice is played, not what it sounds like.
+PLAYED = ("arp", "gate")
+
 # The line an acid bass plays over one bar of sixteenths: semitones above the root (7 is the chord's fifth), None a rest.
 ACID = (0, 0, 12, 0, None, 0, 7, 0, 0, 12, 0, 0, None, 0, 12, 7)
 AIR = {"wave": "noise", "attack": 0.6, "decay": 0.05, "sustain": 1.0, "release": 0.8, "gate": 1.0, "lowpass": 0.35,
@@ -547,10 +619,12 @@ def _walk(runs, beat, scale):
     return out
 
 
-def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=None):
-    """``style`` is one of ``STYLES`` or ``MOODS``; ``chords_given`` as ``parse_chords`` returns them, to overrule
-    the choice; with ``ending`` a closing bar on the tonic is written after the last one, and the song does not loop;
-    ``key`` as ``parse_key`` returns it, when the key found is not the one meant - or a mode is: E phrygian."""
+def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=None, chip=False):
+    """``style`` is one of ``STYLES``, ``GENRES`` or ``MOODS``; ``chords_given`` as ``parse_chords`` returns them, to
+    overrule the choice; with ``ending`` a closing bar on the tonic is written after the last one, and the song does
+    not loop; ``key`` as ``parse_key`` returns it, when the key found is not the one meant - or a mode is: E phrygian;
+    with ``chip`` a genre is played as it is written but on the plain chip instruments - no overdrive, detune,
+    filter or room - so that it sounds the same on every CLIo."""
     how = way(style)
     notes = grid.pitched
     if not notes:
@@ -665,6 +739,21 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
     if how.get("steam"):                                    # a hiss that falls, on the last beat of every second bar
         tracks["steam"] = ([(s - beat, beat, [86], ((86.0, 54.0), (6, 1))) for s in range(2 * bar, total + 1, 2 * bar)],
                            dict(STEAM))
+    if how.get("timpani") and bar == 16:                    # kettledrums: strokes on the root of the chord
+        strokes = [[s, beat, [_place(chord[0], 36)]] for start, steps, chord in runs()
+                   for s in range(start, start + steps) if how["timpani"][s % len(how["timpani"])] == "x"]
+        for stroke, after in zip(strokes, strokes[1:]):     # a stroke rings for a beat, or until the next one
+            stroke[1] = min(stroke[1], after[0] - stroke[0])
+        tracks["timpani"] = ([tuple(stroke) for stroke in strokes], dict(TIMPANI))
+    if how.get("strings"):                                  # a section of strings holds the chord behind the rest
+        held = [(start, steps, _voiced(chord, dict(how, chords="pad"), scale)) for start, steps, chord in runs()]
+        tracks["strings"] = (held, dict(how["strings"]))
+    if how.get("bells"):                                    # a bell an octave above the tune where the tune begins a bar
+        tracks["bells"] = ([(s, min(d, beat), [p[0] + 12]) for s, d, p in tune_events if s % bar == 0 and p[0] + 12 <= 108],
+                           dict(how["bells"]))
+    if how.get("toll"):                                     # a deep bell on the key note where a phrase begins
+        tracks["toll"] = ([(s, min(bar, total - s), [_place(key_note, 48)]) for s in (phrases or range(0, total, PHRASE * bar))
+                           if s < total], dict(how["toll"]))
     if ending:                                              # one more bar: everything comes to rest on the tonic
         close = -(-total // bar) * bar
         home = tuple((tonic + p) % 12 for p in TRIADS[degree_of(mode)])
@@ -693,8 +782,15 @@ def arrange(grid, voices=4, style="plain", chords_given=None, ending=False, key=
         out.insert(2, voice("inner", inner))
     for v in out:                                           # a genre has its own sound for every voice
         over = (how.get("sound") or {}).get(v.role)
+        if over and chip:                                   # the plain chip: played as the genre plays it, no more
+            over = {k: val for k, val in over.items() if k in PLAYED}
         if over:
             v.instrument = {k: val for k, val in dict(v.instrument, **over).items() if val is not None}
-    if how.get("kit_sound"):
+    if how.get("kit_sound") and not chip:
         remarks["kit"] = dict(how["kit_sound"])
+    if chip:                                                # and what is not a voice, on a plain wave at a plain level
+        tracks = {name: (events, dict({k: val for k, val in sound.items() if k not in ("drive", "detune", "filter", "room")},
+                                      volume=min(sound.get("volume", 0.2), 0.3)))
+                  for name, (events, sound) in tracks.items()}
+        remarks["chip"] = True
     return Arrangement(out, drums, NAME, remarks, tracks)

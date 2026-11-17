@@ -98,8 +98,24 @@ class ComposerTests(unittest.TestCase):
         self.assertEqual(len(view["source"]), 15 * 3 + 17)
         self.assertEqual((view["style"], view["voices"][0]["wave"]), ("heroic", "square"))
         self.assertEqual([m[0] for m in view["moods"]][:3], ["calm", "mystery", "dark"])
-        self.assertEqual([g[0] for g in view["genres"]][:6], ["rock", "metal", "doom", "industrial", "ambient", "soundscape"])
-        self.assertEqual(len(view["genres"]), 11)
+        self.assertEqual([g[0] for g in view["genres"]][:7], ["rock", "metal", "doom", "industrial", "rock ballad", "metal march",
+                                                             "dark orchestral"])              # band first, then the orchestra
+        self.assertEqual(len(view["genres"]), 15)
+        self.assertEqual(sorted({g[3] for g in view["genres"]}), ["Band", "Electronic", "Orchestra", "Space"])
+        # a long version of the form, by arrangement: an introduction without the tune, a quiet part, a lift
+        self.assertEqual((plain["longer"], plain["plan"]), ("(A) A B B- A A+", ["", ""]))
+        long = session.arrange("expand", 4, style="epic orchestral", form=plain["longer"], ending=True)
+        self.assertEqual((long["form"], long["plan"], long["steps"]), ("(A) A B B- A A+", ["t", "", "", "q", "", "l"], 400))
+        self.assertEqual(min(n[0] for n in long["voices"][0]["notes"]), 64)       # the tune comes in with the second part
+        self.assertFalse([d for d in long["drums"] if 192 <= d[0] < 256])         # the quiet part has no drums
+        self.assertEqual(long["longer"], long["form"])                            # it is long already
+        self.assertIn("timpani", long["instruments"])
+        self.assertTrue(long["driven"] and not long["chip"])
+        chip = session.arrange("expand", 4, style="epic orchestral", chip=True)   # the plain chip, for any CLIo
+        self.assertTrue(chip["chip"] and not chip["driven"])
+        self.assertNotIn("2.3", chip["needs"] or "")
+        horn = json.loads(session.arrange("expand", 4, lead="horn", chip=True)["song_json"])["instruments"]["lead"]
+        self.assertEqual((horn["wave"], horn["volume"], "filter" in horn), ("saw", 0.3, False))
         self.assertFalse(view["driven"])
         heavy = session.arrange("expand", 4, style="doom")
         self.assertTrue(heavy["driven"])
@@ -131,7 +147,8 @@ class ComposerTests(unittest.TestCase):
         session = Session()
         session.open_tune("e4 e4 f4 g4 | g4 f4 e4 d4", tempo=100)
         view = session.arrange("expand", 4, style="march")
-        self.assertEqual(([name for name, _about in view["leads"]], view["lead"]), (["soft", "flute", "strings"], ""))
+        self.assertEqual(([name for name, _about in view["leads"]], view["lead"]),
+                         (["soft", "flute", "strings", "clarinet", "oboe", "horn", "trumpet", "bells"], ""))
         self.assertEqual(json.loads(view["song_json"])["instruments"]["lead"]["wave"], "square")
         flute = session.arrange("expand", 4, style="march", lead="flute")
         self.assertEqual((flute["lead"], json.loads(flute["song_json"])["instruments"]["lead"]["wave"]), ("flute", "sine"))
@@ -334,6 +351,21 @@ class PageTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(ROOT, ".nojekyll")))    # or Pages hides __init__.py
         with open(os.path.join(ROOT, "index.html"), encoding="utf-8") as f:
             self.assertIn('url=web/', f.read())
+
+    def test_playheads_analysis_is_there_for_the_hummed_tempo(self):
+        folder = os.path.join(WEB, "vendor", "playhead")
+        with open(os.path.join(folder, "analysis.js"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("SPDX-License-Identifier: Apache-2.0", text[:200])
+        self.assertIn("root.WL = api", text)                                      # it stands by itself
+        self.assertTrue("rhythmOf" in text and "analyse" in text)
+        with open(os.path.join(folder, "README.md"), encoding="utf-8") as f:
+            self.assertIn("Playhead", f.read())
+        with open(os.path.join(WEB, "app.js"), encoding="utf-8") as f:
+            page = f.read()
+        self.assertIn("vendor/playhead/analysis.js", page)                        # fetched only when a tune is hummed
+        with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
+            self.assertNotIn("vendor/playhead", f.read())
 
     def test_the_vendored_synth_plays_a_song(self):
         synth = clio_synth()

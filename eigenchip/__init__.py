@@ -7,6 +7,6 @@ events to three or four voices, writers emit a playable chip song, and metrics
 say how much of the original survived.
 """
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 __author__ = "Daniel Sandner"
 __license__ = "Apache-2.0"

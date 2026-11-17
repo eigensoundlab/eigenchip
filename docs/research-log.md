@@ -3,6 +3,44 @@
 Dated notes on what was tried and what it showed. Newest first. Keep entries short; the
 numbers live in `RESULTS.md` and in the history of that file.
 
+## 2026-11-17 - Playhead in the page; the rest of the orchestra; long by arrangement
+
+**The verdict by ear on 0.14.0**: "all last sounds wavs are much more pleasing and usable
+as 'chip' game music and sometimes even sounding more advanced - the orchestral is on
+good path." Asked: Playhead in (optional, on by default), more orchestral colours,
+extension by arrangement; the chip sound kept as an option for CLIo projects that want it.
+
+**Playhead in the page.** Only `src/analysis.js` of Playhead is needed for the tempo (it
+stands by itself: `WL.analyse`, `WL.rhythmOf`), 110 kB, fetched when a tune is first
+hummed. The recording is analysed in the page (0.1 to 0.6 s for 10 to 25 s of sound in
+Node), the tempo taken when it lies between 40 and 220 and the pulse is clear (median
+clarity 0.4 or more - Playhead's own threshold, without its ten-second rule, since a hum
+is short), and handed to the hum reader, which still fits within a fifth of it. In a
+browser, through a made-up microphone: a tune hummed at 138 with 90 set is written down
+right (18 or 19 of 19 notes on their sixteenth, from run to run) with Playhead and as
+nonsense at 76 without.
+
+**The rest of the orchestra**, with what the synthesizer has: a clarinet is a square wave
+(odd partials only) made soft; an oboe a narrow pulse; a trumpet a saw wave whose filter
+opens fast, a horn one whose filter opens slowly and not far; plucked strings and a harp
+a bright sound whose filter closes at once; a choir a detuned section behind a filter
+that rings around one vowel; an organ the `organ` wave in a large room; a bell a sine
+that decays. Kettledrums are notes on the root of the chord, not hits.
+
+**Long by arrangement.** A piece gets longer without new notes when its parts come back
+differently: without the tune (an introduction), without bass and drums (a breakdown), a
+tone higher (a lift). The parts are arranged whole first - the tune is still what the
+chords are chosen from, also where it is silent - and then thinned and moved. So a form
+can carry marks, and a long version of a plain form is made by rule. What the rule
+cannot know is where a piece wants to breathe; it is a first draft of a form, to be
+edited.
+
+**The plain chip.** A genre is two things: how the voices are played (riff, pad, stab,
+which bass) and what they sound like. The tick keeps the first and drops the second, and
+with it everything CLIo has only from 2.3 on.
+
+**Not listened to**: the four new genres, the five new sounds for the tune, any long form.
+
 ## 2026-11-17 - Playhead as a judge; an orchestra and a studio
 
 **The verdict by ear on 0.13.0** (as far as it was given): the minor tune in *ambient*

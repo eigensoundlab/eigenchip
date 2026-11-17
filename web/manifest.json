@@ -5,6 +5,7 @@
   "eigenchip/arrangers/__init__.py",
   "eigenchip/arrangers/common.py",
   "eigenchip/arrangers/expand.py",
+  "eigenchip/arrangers/plan.py",
   "eigenchip/arrangers/roles.py",
   "eigenchip/arrangers/roles_arp.py",
   "eigenchip/arrangers/skyline.py",

@@ -12,7 +12,9 @@ count **beats** here, not steps as in a song: a tune is thought in beats.
 
 A double bar line ``||`` begins a new **part**.  Parts are called A, B, C... in
 the order they are written, each begins on a bar line, and a *form* such as
-``A A B A`` says in which order they are played (``play_form``).
+``A A B A`` says in which order they are played (``play_form``) - and, with
+marks, how: ``(A)`` without the tune, ``A-`` quiet, ``A+`` a tone higher
+(``eigenchip/arrangers/plan.py``).
 """
 from __future__ import annotations
 
@@ -108,29 +110,24 @@ def parts_of(score):
 
 
 def parse_form(text, names):
-    """'A A B A' or 'aaba' -> ['A', 'A', 'B', 'A']; nothing -> every part once, in order."""
-    form = re.findall(r"[A-Za-z]", (text or "").upper())
-    if re.sub(r"[A-Za-z\s,|-]", "", text or ""):
-        raise ValueError("The form is written with the letters of the parts, for example: A A B A.")
-    for name in form:
-        if name not in names:
-            have = names[0] if len(names) == 1 else "%s to %s" % (names[0], names[-1])
-            raise ValueError("The form names a part %s, and the tune has only %s. A new part begins at a double bar "
-                             "line, ||, in the text - or where you double-click a bar number on the roll." % (name, have))
-    if len(form) > 64:
-        raise ValueError("A form has at most 64 parts.")
-    return form or list(names)
+    """'A A B A' or 'aaba' -> ['A', 'A', 'B', 'A']; nothing -> every part once, in order.  The marks that say how a
+    part is played - (A), A-, A+ - are read by ``arrangers.plan.parse``; here only the letters are returned."""
+    from ..arrangers import plan
+    return [name for name, _how in plan.parse(text, list(names))]
 
 
 def play_form(score, form=None):
     """The tune as it is played: its parts in the order of the form.
 
     Returns a new Score.  Its ``info`` holds ``parts`` - ``[name, start in the song, start as written, beats]`` for
-    each part played, all in beats - and ``phrase_starts``, where each of them begins.
+    each part played, all in beats - ``phrase_starts``, where each of them begins, ``plan`` - how each is played
+    (``arrangers.plan``: without the tune, quiet, a tone higher) - and ``longer``, a long version of the form.
     """
+    from ..arrangers import plan
     parts = parts_of(score)
     by_name = {name: (start, beats) for name, start, beats in parts}
-    order = parse_form(form, [name for name, _s, _b in parts])
+    how = plan.parse(form, [name for name, _s, _b in parts])
+    order = [name for name, _how in how]
     notes, played, at = [], [], 0.0
     for name in order:
         start, beats = by_name[name]
@@ -142,7 +139,8 @@ def play_form(score, form=None):
         at += beats
     if not notes:
         raise ValueError("The parts in the form have no notes in them.")
-    info = dict(score.info, parts=played, phrase_starts=[p[1] for p in played], form=" ".join(order),
+    info = dict(score.info, parts=played, phrase_starts=[p[1] for p in played], form=plan.write(how),
+                plan=[flags for _name, flags in how], longer=plan.write(plan.longer(how)),
                 sections=[start for _n, start, _b in parts])
     return Score(notes, score.tempo, score.meter, score.title, dict(score.names), info)
 

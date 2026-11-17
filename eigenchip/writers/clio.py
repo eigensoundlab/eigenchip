@@ -426,7 +426,7 @@ def to_song(arrangement, grid, bars_per_pattern=4, title=None, effects=True, exp
         instruments["bed"]["volume"] = 0.15                     # no levels to follow: keep it in the background
     elif "bed" in instruments:
         instruments["bed"].update(BED_SMOOTH)
-    moving = full and (levels is not None or bool(extra))
+    moving = full and any("@" in text or ">" in text for tracks in patterns.values() for text in tracks.values())
     shaped = any(inst.get(key) for inst in instruments.values() for key in SHAPED)
     needs = (["CLIo 2.1 (slides and levels)"] if moving else []) + (
         ["CLIo 2.3 (%s); an older one plays the same notes with plainer sounds" % ", ".join(SHAPED)] if shaped else [])

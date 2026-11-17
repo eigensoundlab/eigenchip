@@ -349,7 +349,7 @@ class ExpandTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "names a part D"):
             play_form(tune, "A D")
         with self.assertRaisesRegex(ValueError, "letters of the parts"):
-            play_form(tune, "A + B")
+            play_form(tune, "A * B")
         drawn = read_notes([[0, 1, 60], [8, 1, 62]], sections=[1, 2])                # from a piano roll: parts by bar
         self.assertEqual([p[0] for p in parts_of(drawn)], ["A", "B", "C"])
         self.assertEqual(write_tune(drawn), "c4 .:3 || .:4 || d4")
@@ -438,12 +438,53 @@ class ExpandTests(unittest.TestCase):
         home = quantize(read_tune("e4 d4 c4:2 | d4 e4 c4:2", 120))                   # a tune that comes home by itself
         self.assertEqual(len(arrange(home, "expand", 4, ending=True).voice("lead").events), 6)
 
+    def test_a_plan_for_the_parts(self):
+        from eigenchip.arrangers import plan
+        from eigenchip.readers.tune import play_form, read_tune
+        names = ["A", "B"]
+        self.assertEqual(plan.parse("(A) A B- A+", names), [("A", "t"), ("A", ""), ("B", "q"), ("A", "l")])
+        self.assertEqual(plan.write(plan.parse("(a)aab-a+ (b)-+", names)), "(A) A A B- A+ (B)-+")
+        self.assertEqual(plan.parse("", names), [("A", ""), ("B", "")])
+        self.assertEqual(plan.write(plan.longer(plan.parse("A A B A", names))), "(A) A A B A B- A A+")
+        self.assertEqual(plan.write(plan.longer(plan.parse("A", ["A"]))), "(A) A A- A A+")
+        self.assertEqual(plan.write(plan.longer(plan.parse("(A) B", names))), "(A) B")       # it has marks: left alone
+        for bad, why in (("A C", "names a part C"), ("(A B", "both of them"), ("A * B", "letters of the parts")):
+            with self.assertRaisesRegex(ValueError, why):
+                plan.parse(bad, names)
+        tune = read_tune("e4 e4 f4 g4 | g4 f4 e4 d4 || c4 c4 d4 e4 | e4:1.5 d4:.5 c4:2", 120)
+        played = play_form(tune, "(A) A B- A+")
+        self.assertEqual((played.info["form"], played.info["plan"]), ("(A) A B- A+", ["t", "", "q", "l"]))
+        self.assertEqual(play_form(tune, "A B").info["longer"], "(A) A B B- A A+")
+        grid = quantize(played)
+        whole = arrange(grid, "expand", 4, style="march", ending=True)
+        arr = plan.apply(arrange(grid, "expand", 4, style="march", ending=True), played.info["parts"], played.info["plan"],
+                         grid.steps_per_beat)
+        in_part = lambda events, i: [e for e in events if 32 * i <= e[0] < 32 * (i + 1)]
+        self.assertEqual(in_part(arr.voice("lead").events, 0), [])                # (A): no tune, nor its second voice,
+        self.assertEqual(in_part(arr.voice("inner").events, 0), [])
+        self.assertEqual(in_part(arr.voice("bass").events, 0), in_part(whole.voice("bass").events, 0))   # the rest as it was
+        self.assertEqual(in_part(arr.voice("lead").events, 1), in_part(whole.voice("lead").events, 1))   # A: untouched
+        self.assertEqual(in_part(arr.voice("bass").events, 2), [])                # B-: no bass, no drums; tune and chords stay
+        self.assertEqual(in_part(arr.drums, 2), [])
+        self.assertEqual(in_part(arr.voice("chords").events, 2), in_part(whole.voice("chords").events, 2))
+        for role in ("lead", "bass", "chords"):                                   # A+: everything a tone higher,
+            self.assertEqual([[p + 2 for p in ps] for _s, _d, ps in whole.voice(role).events if _s >= 96],
+                             [ps for _s, _d, ps in arr.voice(role).events if _s >= 96], role)
+        self.assertEqual(arr.voice("bass").events[-1], (128, 16, [38]))           # the closing bar with it: on d, not c
+        self.assertEqual(in_part(arr.drums, 3), in_part(whole.drums, 3))
+        self.assertEqual(clio.validate(clio.to_song(arr, grid)), [])
+        # a note that lasts over the edge of a part is cut there
+        self.assertEqual(plan._split([(0, 40, [60])], 32, 64), ([(0, 32, [60])], [(32, 8, [60])]))
+        self.assertEqual(plan._split([(60, 10, [60])], 32, 64), ([(64, 6, [60])], [(60, 4, [60])]))
+
     def test_genres(self):
         from eigenchip.arrangers import expand
         from eigenchip.readers.tune import read_tune
         grid = quantize(read_tune("a4 c5 e5 c5 | d5 f5 e5:2 | a4 c5 e5 a5 | g#5 e5 a5:2", 100))
         self.assertEqual(list(expand.GENRES), ["rock", "metal", "doom", "industrial", "ambient", "soundscape",
-                                               "rock ballad", "metal march", "dark orchestral", "acid techno", "neon noir"])
+                                               "rock ballad", "metal march", "dark orchestral", "acid techno", "neon noir",
+                                               "epic orchestral", "pastoral", "chamber", "cathedral"])
+        self.assertEqual({how["group"] for how in expand.GENRES.values()}, set(expand.GROUPS))
         self.assertFalse(set(expand.GENRES) & (set(expand.STYLES) | set(expand.MOODS)))
         tune = [(s, tuple(p)) for s, _d, p in arrange(grid, "expand", 4).voice("lead").events]
         kinds = {}
@@ -470,14 +511,38 @@ class ExpandTests(unittest.TestCase):
             self.assertEqual("CLIo 2.3" in song.get("needs", ""), shaped, name)
             self.assertEqual(shaped, name not in ("ambient", "soundscape"), name)
         self.assertEqual(kinds, {"power": ["rock", "metal", "doom", "industrial", "metal march"],
-                                 "pad": ["ambient", "soundscape", "dark orchestral", "neon noir"],
-                                 "arp": ["rock ballad"], "stab": ["acid techno"]})
+                                 "pad": ["ambient", "soundscape", "dark orchestral", "neon noir", "epic orchestral", "cathedral"],
+                                 "arp": ["rock ballad", "pastoral"], "stab": ["acid techno", "chamber"]})
         # an orchestra: a section of strings (detuned, opening), low strings in eighths, drums laid over each other
         dark = arrange(grid, "expand", 4, style="dark orchestral")
         song = clio.to_song(dark, grid)
         self.assertEqual((song["instruments"]["chords"]["detune"], song["instruments"]["chords"]["filter"][:2]), (9, [600, 2600]))
         self.assertEqual([d for _s, d, _p in dark.voice("bass").events[:4]], [2, 2, 2, 2])
-        self.assertEqual([dict(dark.drums).get(s) for s in (0, 6, 8, 10)], [["k", "o"], ["k"], ["t"], ["t"]])
+        self.assertEqual([dict(dark.drums).get(s) for s in (0, 6, 8, 10)], [["k", "o"], ["k"], None, None])
+        strokes, kettle = dark.tracks["timpani"]                                  # kettledrums are notes: the chord's root
+        self.assertEqual([e[:2] for e in strokes[:2]], [(8, 2), (10, 4)])
+        self.assertEqual(strokes[0][2], [45])                                     # a, under A minor
+        self.assertEqual(kettle["wave"], "triangle")
+        # the rest of the orchestra: a section of strings behind a harp, a bell above the tune, a bell that tolls
+        pastoral = arrange(grid, "expand", 4, style="pastoral")
+        held, sound = pastoral.tracks["strings"]
+        self.assertEqual((held[0][:2], len(held[0][2]), sound["detune"]), ((0, 16), 3, 9))
+        self.assertEqual(clio.to_song(pastoral, grid)["instruments"]["chords"]["arp"], 2)     # the harp rolls the chord
+        self.assertFalse(pastoral.drums)
+        bells = arrange(grid, "expand", 4, style="chamber").tracks["bells"][0]
+        self.assertEqual([(s, p) for s, _d, p in bells], [(0, [81]), (16, [86]), (32, [81]), (48, [92])])  # an octave above
+        toll = arrange(grid, "expand", 4, style="cathedral").tracks["toll"][0]
+        self.assertEqual([(s, p) for s, _d, p in toll], [(0, [57])])              # the key note, where the phrase begins
+        # the plain chip: the same notes on the plain instruments, for any CLIo
+        for name in expand.GENRES:
+            plain = arrange(grid, "expand", 4, style=name, chip=True)
+            rich = arrange(grid, "expand", 4, style=name)
+            song = clio.to_song(plain, grid)
+            self.assertFalse([k for inst in song["instruments"].values() for k in inst if k in clio.SHAPED], name)
+            self.assertNotIn("2.3", song.get("needs", ""), name)
+            self.assertEqual([v.events for v in plain.voices], [v.events for v in rich.voices], name)
+            self.assertEqual(song["instruments"]["lead"]["volume"], 0.32, name)
+            self.assertEqual("arp" in song["instruments"]["chords"], "arp" in clio.to_song(rich, grid)["instruments"]["chords"], name)
         march = dict(arrange(grid, "expand", 4, style="metal march").drums)
         self.assertEqual([march.get(s) for s in (0, 2, 4, 6, 7)], [["k", "o"], ["s"], ["k"], ["s"], ["s"]])
         # acid: sixteenths around the root with rests, through a resonant filter that closes on every note

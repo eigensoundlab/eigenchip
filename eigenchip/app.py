@@ -203,7 +203,7 @@ class Session:
     # arranging
     # ------------------------------------------------------------------ #
     def arrange(self, arranger=DEFAULT, voices=3, steps_per_beat=4, bars_per_pattern=4, expression="full",
-                style="plain", chords=None, form=None, ending=False, key=None, lead=None):
+                style="plain", chords=None, form=None, ending=False, key=None, lead=None, chip=False):
         """Arrange the opened piece. Returns everything the page draws and offers for download.
 
         ``expression`` is ``full`` (levels and slides; the song needs CLIo 2.1)
@@ -213,15 +213,18 @@ class Session:
         played once) and ``key`` (``"Am"``, when the key found is not the one
         meant) are for ``expand``, which writes parts instead of reducing them.
         ``form`` (``"A A B A"``) is for a tune of the user's own: the order in
-        which its parts are played.  ``lead`` names another sound for the tune
+        which its parts are played, and with marks how - ``(A)`` without the
+        tune, ``A-`` quiet, ``A+`` a tone higher (``arrangers/plan.py``).
+        ``chip`` plays a genre on the plain chip instruments.  ``lead`` names another sound for the tune
         (``arrangers.common.LEADS``: soft, flute, strings), for any arranger.
         """
+        from .arrangers import plan
         from .arrangers.common import LEADS
         if lead and lead not in LEADS:
             raise ValueError("Unknown sound for the tune '%s'. Available: %s" % (lead, ", ".join(LEADS)))
         from .arrangers import expand
         written = {"style": style, "chords_given": expand.parse_chords(chords) if chords else None,
-                   "ending": bool(ending), "key": expand.parse_key(key)}
+                   "ending": bool(ending), "key": expand.parse_key(key), "chip": bool(chip)}
         if self.score is None:
             raise ValueError("Open a file first.")
         if self.tune:
@@ -238,7 +241,13 @@ class Session:
         for name in ARRANGERS:
             arr = arrange(grid, name, int(voices), **(written if name == "expand" else {}))
             if lead and arr.voice("lead") is not None:
-                arr.voice("lead").instrument = dict(LEADS[lead]["sound"])
+                sound = dict(LEADS[lead]["sound"])
+                if chip and any(key in sound for key in clio.SHAPED):       # the plain chip has no such sounds:
+                    sound = {k: v for k, v in sound.items() if k not in clio.SHAPED}
+                    sound["volume"] = min(sound.get("volume", 0.3), 0.3)    # the wave alone, at a plain level
+                arr.voice("lead").instrument = sound
+            if self.tune and self.score.info.get("plan"):   # how each part of the form is played
+                plan.apply(arr, self.score.info["parts"], self.score.info["plan"], grid.steps_per_beat)
             song = clio.to_song(arr, grid, int(bars_per_pattern), expression=expression)
             res = metrics.evaluate(judge, arr, song, truth)
             res["compression"] = metrics.evaluate(grid, arr, song)["compression"]
@@ -291,7 +300,9 @@ class Session:
             "key": arr.notes.get("key"), "ending": bool(arr.notes.get("ending")),
             "tune_text": self._tune_text(),
             "styles": [[name, how["about"]] for name, how in expand.STYLES.items()],
-            "genres": [[name, how["about"], how["tempo"]] for name, how in expand.GENRES.items()],
+            "genres": [[name, how["about"], how["tempo"], expand.GROUPS[how["group"]]]
+                       for group in expand.GROUPS for name, how in expand.GENRES.items() if how["group"] == group],
+            "chip": bool(arr.notes.get("chip")),
             "moods": [[name, how["about"], how["tempo"]] for name, how in expand.MOODS.items()],
             "leads": [[name, how["about"]] for name, how in LEADS.items()], "lead": lead or "",
             "driven": any(inst.get(key) for inst in song["instruments"].values() for key in clio.SHAPED),
@@ -314,13 +325,14 @@ class Session:
         begins; ``form``: ``"A A B A"``; ``parts``: ``[name, start, start as written, length]`` in steps, one for
         each part played."""
         if not getattr(self, "tune", False):
-            return {"written": None, "sections": None, "form": None, "parts": None}
+            return {"written": None, "sections": None, "form": None, "parts": None, "longer": None, "plan": None}
         from .readers.tune import bar_beats, parts_of
         spb, bar = grid.steps_per_beat, bar_beats(self.written.meter)
         return {
             "written": [[n.start, n.dur, n.pitch] for n in self.written.notes],
             "sections": [int(round(start / bar)) for _name, start, _beats in parts_of(self.written)],
-            "form": self.score.info.get("form"),
+            "form": self.score.info.get("form"), "longer": self.score.info.get("longer"),
+            "plan": list(self.score.info.get("plan") or []),
             "parts": [[name, int(round(at * spb)), int(round(start * spb)), int(round(beats * spb))]
                       for name, at, start, beats in self.score.info.get("parts") or []],
         }

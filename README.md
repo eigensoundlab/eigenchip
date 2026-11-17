@@ -158,20 +158,24 @@ takes a melody as text, *Edit the tune on the roll* lets you click, drag and pla
 (the computer's keys, or a MIDI keyboard where the browser allows one) - also the lead of
 a piece you converted - *Record in time* counts a bar in and writes down what you play
 against a click, and *Hum it instead* records the microphone and writes down what you
-hummed, sang or whistled, for you to mend on the roll. Played and hummed notes are put on
+hummed, sang or whistled - at the tempo you hummed it, which
+[Playhead](https://github.com/eigensoundlab/playhead) hears - for you to mend on the roll. Played and hummed notes are put on
 sixteenths, eighths or quarter notes, as you choose.
 
 The arrangement is then shaped by
 
-- a **style** (plain, ballad, march, drive, waltz, walk - a walking bass), a **genre**
-  (rock, metal, doom, industrial, metal march: power chords in a riff through overdrive;
-  rock ballad; dark orchestral: strings, a horn, great drums; acid techno; neon noir: slow
-  synthesizer brass in seventh chords; ambient, soundscape: held pads, a drone, air and
-  no drums) or a **mood** (calm, mystery, dark,
+- a **style** (plain, ballad, march, drive, waltz, walk - a walking bass), a **genre** -
+  *band*: rock, metal, doom, industrial, rock ballad, metal march (power chords in a riff
+  through overdrive); *orchestra*: dark orchestral, epic orchestral, pastoral, chamber,
+  cathedral (strings, harp, woodwinds, brass, a choir, an organ, kettledrums, bells);
+  *electronic*: acid techno, neon noir; *space*: ambient, soundscape - or a **mood** (calm,
+  mystery, dark,
   tense, battle, heroic, shop, space, victory, defeat: the moods of CLIo's own composer,
   each with its tempo, drums and sound for the tune);
 - a **form**: `||` in the text, or a double click on a bar number of the roll, begins a
-  new part (A, B, C…), and `A A B A` says in which order they are played;
+  new part (A, B, C…), and `A A B A` says in which order they are played - and how: `(A)`
+  without the tune, `A-` quietly, `A+` a tone higher. *Make it longer* turns `A A B A`
+  into `(A) A A B A B- A A+`: a short tune becomes a piece;
 - an **ending**: a closing bar on the tonic, and the song is played once;
 - the **chords**, which are shown bar by bar and can be replaced, and the **key**, which
   can be chosen when the one found is not the one meant - also as a mode (E phrygian, D
@@ -202,7 +206,11 @@ from 2.3 (`web/vendor/clio`): `drive` (overdrive), `detune`, `filter` (a resonan
 that moves over each note) and `room`. An older CLIo plays such a song with the same
 notes and plainer sounds.
 
-On the page the tune can be given another sound (*Tune played*: soft, flute, strings),
+A genre can also be played *on the plain chip*: the same notes on plain instruments, the
+same on every CLIo.
+
+On the page the tune can be given another sound (*Tune played*: soft, flute, strings,
+clarinet, oboe, horn, trumpet, bells),
 any voice can be switched off - and is then left out of the song and the sound you take
 away, so a backing without its tune is two clicks - and there is a dark mode.
 

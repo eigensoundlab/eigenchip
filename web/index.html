@@ -15,7 +15,7 @@
       : (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   })();
 </script>
-<link rel="stylesheet" href="app.css?v=0.14.0">
+<link rel="stylesheet" href="app.css?v=0.15.0">
 </head>
 <body>
 <header class="top">
@@ -56,6 +56,7 @@
         <select id="tune-meter" aria-label="Meter of the tune"><option>4/4</option><option>3/4</option><option>2/4</option><option>6/8</option></select>
         <button type="button" id="tune-use" class="go">Arrange this tune</button>
         <button type="button" id="hum" class="quiet" aria-pressed="false" title="Record your voice with the microphone and have the tune written down. Hum, sing or whistle one note after another, near the tempo set here.">Hum it instead</button>
+        <label title="Playhead listens for the tempo of what you hum, so that it need not be set first. Switched off, the tempo set here is taken and fitted to within a fifth of it."><input type="checkbox" id="hum-tempo" checked> at its own tempo</label>
         <label>on <select id="snap" title="The note value that hummed and played notes are put on. Sixteenths keep quick notes; eighths and quarters forgive uneven timing."><option value="1">sixteenths</option><option value="2">eighths</option><option value="4">quarter notes</option></select></label>
       </p>
     </div>
@@ -110,12 +111,14 @@
     <p class="written" id="written" hidden>
       The written parts in the style
       <select id="style" aria-label="Style, genre or mood of the written parts"></select>
+      <label title="The same notes on the plain chip instruments, without overdrive, detune, filter or room: it sounds the same on every CLIo."><input type="checkbox" id="chip"> on the plain chip</label>
       <span class="hint" id="style-about"></span>
     </p>
     <p class="written" id="shape" hidden>
       <label id="form-box">Form <input id="form" type="text" size="12" spellcheck="false" autocapitalize="characters" placeholder="A A B A" aria-describedby="shape-hint"></label>
       <label>Key <select id="key" aria-describedby="shape-hint"></select> <select id="mode" aria-label="Major, minor, or a mode of the scale" title="Major and minor, and the modes: dorian (minor with a bright sixth), phrygian (dark: the second step is a half step above the key note), lydian, mixolydian (major with a flat seventh), locrian." hidden></select></label>
       <label><input type="checkbox" id="ending"> End with a closing bar</label>
+      <button type="button" id="longer" class="quiet" hidden title="A long version of the form by arrangement: the first part without its tune to begin, the form, a quiet part, then the first part again and once more a tone higher, and a closing bar.">Make it longer</button>
       <span class="hint" id="shape-hint"></span>
     </p>
     <p class="written" id="chordline" hidden>
@@ -209,9 +212,10 @@
 
 <footer>
   <p>eigenchip <span id="version"></span> by Daniel Sandner, Apache-2.0. The chip sound is made by the synthesizer of
-  <a href="https://github.com/eryxgames/CLIo">CLIo</a> 2.2, with the overdrive it will have in 2.3.
+  <a href="https://github.com/eryxgames/CLIo">CLIo</a> 2.2, with the instrument settings it will have in 2.3.
+  The tempo of a hummed tune is heard by <a href="https://github.com/eigensoundlab/playhead">Playhead</a>.
   Everything runs in this page; files are not uploaded.</p>
 </footer>
-<script src="app.js?v=0.14.0"></script>
+<script src="app.js?v=0.15.0"></script>
 </body>
 </html>

@@ -231,7 +231,7 @@ async function convert(arrangeOnly) {
     state.view = await ask("arrange", { arranger: $("arranger").value, voices: Number($("voices").value),
       expression: $("expression").value, style: $("style").value || "plain", chords: state.chords,
       form: state.source.tune ? state.form : null, ending: $("ending").checked, key: state.key || null,
-      lead: $("lead-sound").value || null });
+      lead: $("lead-sound").value || null, chip: $("chip").checked });
     show();
     status("Making the chip sound…");
     await sound();
@@ -294,7 +294,8 @@ function written() {                                       // what only the expa
   if (!on) return;
   const style = $("style");
   if (!style.options.length) {
-    for (const [label, list] of [["Ways of moving", v.styles], ["Genres", v.genres], ["Moods", v.moods]]) {
+    const families = [...new Set(v.genres.map((g) => g[3]))].map((family) => [family, v.genres.filter((g) => g[3] === family)]);
+    for (const [label, list] of [["Ways of moving", v.styles], ...families, ["Moods", v.moods]]) {
       const group = document.createElement("optgroup");
       group.label = label;
       for (const [name] of list) group.append(new Option(name, name));
@@ -316,13 +317,16 @@ function written() {                                       // what only the expa
   $("mode").value = chosen[1] || "major";
   $("mode").hidden = !state.key;                            // the mode is chosen with the key note
   const own = !!v.parts;
+  $("chip").checked = !!v.chip;
   $("form-box").hidden = !own;
+  $("longer").hidden = !own || !v.longer || v.longer === v.form;
   if (own && document.activeElement !== $("form")) $("form").value = v.form || "";
   const names = own ? [...new Set(v.sections.map((_, i) => String.fromCharCode(65 + i)))] : [];
   $("shape-hint").textContent = (own ? (names.length > 1
     ? `The tune has the parts ${names.join(", ")}. The form is the order they are played in; a part not named is left out. `
     : "The tune is one part, A. Begin another with || in the text, or with a double click on a bar number while editing the roll; " +
-      "then write here the order they are played in, for example A A B A. ") : "") +
+      "then write here the order they are played in, for example A A B A. ") +
+    "A part in brackets, (A), is played without the tune; A- quietly, without bass and drums; A+ a tone higher. " : "") +
     (v.ending ? "With its closing bar the song is played once." : "Without a closing bar the song goes round and round.");
 }
 
@@ -336,7 +340,8 @@ function styleChanged() {                                   // a mood or a genre
 }
 
 // ---------------------------------------------------------------------- which voices sound
-const VOICE_NAMES = { lead: "Lead", bass: "Bass", inner: "Inner", chords: "Chords", kit: "Drums", bed: "Noise", fx: "Sweeps", air: "Air", steam: "Steam" };
+const VOICE_NAMES = { lead: "Lead", bass: "Bass", inner: "Inner", chords: "Chords", kit: "Drums", bed: "Noise", fx: "Sweeps", air: "Air", steam: "Steam",
+  timpani: "Kettledrums", strings: "Strings", bells: "Bells", toll: "Bell" };
 const voiceName = (id) => VOICE_NAMES[id] || id.replace(/^inner(\d)$/, "Inner $1").replace(/^fx(\d)$/, "Sweeps $1");
 const muted = () => [...state.mute].filter((id) => state.view && state.view.instruments.includes(id));
 
@@ -607,7 +612,10 @@ function draw() {
   }
   // the parts of a tune: as written while it is edited, as played otherwise
   const marks = edit.on ? (edit.sections.length ? [0, ...edit.sections].map((bar, i) => [String.fromCharCode(65 + i), bar * v.steps_per_bar]) : [])
-    : (v.parts && v.sections.length > 1 ? v.parts.map(([name, at]) => [name, at]) : []);
+    : (v.parts && v.parts.length > 1 ? v.parts.map(([name, at], i) => {
+      const how = (v.plan || [])[i] || "";                // as the form writes it: (A), A-, A+
+      return [(how.includes("t") ? `(${name})` : name) + (how.includes("q") ? "-" : "") + (how.includes("l") ? "+" : ""), at];
+    }) : []);
   for (const [name, at] of marks) {
     c.fillStyle = css("--lead");
     c.fillRect(Math.round(at * px), 0, 2, H);
@@ -885,6 +893,13 @@ $("dl-song").addEventListener("click", async () => {       // what is switched o
   save(state.view.song_name + (muted().length ? "-part" : "") + ".json", new Blob([text], { type: "application/json" }));
 });
 $("lead-sound").addEventListener("change", () => convert(true));
+$("chip").addEventListener("change", () => convert(true));
+$("longer").addEventListener("click", () => {             // the form made long by arrangement: an introduction, a quiet part, a lift
+  if (!state.view || !state.view.longer) return;
+  state.form = state.view.longer;
+  $("ending").checked = true;
+  convert(true);
+});
 $("theme").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
 $("dl-wav").addEventListener("click", () => state.chipBytes && save(state.view.song_name + "-chip.wav", new Blob([state.chipBytes], { type: "audio/wav" })));
 $("dl-midi").addEventListener("click", async () => {
@@ -1014,6 +1029,28 @@ async function toggleHum() {
   status(`Listening. Hum, sing or whistle the tune, one note after another, at about ${tuneMeta().tempo} beats a minute. Then stop.`);
 }
 
+// Playhead's analysis (web/vendor/playhead), fetched the first time it is wanted: it hears the tempo of what was
+// hummed, so that none has to be set first.  Nothing leaves the page.
+let playheadLoad = null;
+function loadPlayhead() {
+  if (window.WL) return Promise.resolve(window.WL);
+  playheadLoad = playheadLoad || new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "vendor/playhead/analysis.js?v=0.4.0";
+    script.onload = () => (window.WL ? resolve(window.WL) : reject(new Error("Playhead did not start.")));
+    script.onerror = () => { playheadLoad = null; reject(new Error("Playhead did not load.")); };
+    document.head.append(script);
+  });
+  return playheadLoad;
+}
+
+async function heardTempo(samples) {                        // beats a minute, or null where Playhead is not sure of a pulse
+  const WL = await loadPlayhead();
+  const sound = { sampleRate: RATE, numberOfChannels: 1, length: samples.length, duration: samples.length / RATE, getChannelData: () => samples };
+  const rhythm = WL.rhythmOf(await WL.analyse(sound, () => {}));
+  return rhythm && rhythm.tempo >= 40 && rhythm.tempo <= 220 && rhythm.medClar >= 0.4 ? rhythm.tempo : null;
+}
+
 async function heardHum() {
   clearTimeout(hum.timer);
   const blob = new Blob(hum.chunks, { type: hum.rec.mimeType });
@@ -1024,12 +1061,15 @@ async function heardHum() {
   if (state.busy) return status("Still working on the last piece. Hum it again in a moment.");
   state.busy = true;
   progress(null);
-  let facts = null;
+  let facts = null, found = null;
   try {
     status("Writing down what was hummed…");
     const got = await decode(await blob.arrayBuffer(), 60);
     const { tempo, meter } = tuneMeta();
-    facts = await ask("open_hum", { rate: RATE, tempo, meter, grid: Number($("snap").value) / 4 }, got.samples);
+    if ($("hum-tempo").checked) {
+      try { found = await heardTempo(got.samples); } catch (err) { found = null; }     // without it: the tempo that is set
+    }
+    facts = await ask("open_hum", { rate: RATE, tempo: found || tempo, meter, grid: Number($("snap").value) / 4 }, got.samples);
   } catch (err) {
     status(err.message, true);
   } finally {
@@ -1040,7 +1080,9 @@ async function heardHum() {
   state.opened = null;
   state.form = null;
   $("tune-tempo").value = String(Math.round(facts.tempo));
-  state.after = `Heard ${facts.hummed} notes at about ${Math.round(facts.tempo)} beats a minute. They are on the roll: mend what was misheard, then play it.`;
+  state.after = `Heard ${facts.hummed} notes at about ${Math.round(facts.tempo)} beats a minute` +
+    ($("hum-tempo").checked ? (found ? ", the tempo Playhead heard" : "; Playhead was not sure of the tempo, so the one set was taken") : "") +
+    ". They are on the roll: mend what was misheard, then play it.";
   setEditing(true, facts.written.map(([s, d, p]) => [Math.round(s * 4), Math.max(1, Math.round(d * 4)), p]));
 }
 
